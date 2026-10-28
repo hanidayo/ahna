@@ -121,14 +121,18 @@ final class AppUpdater: ObservableObject {
             for i in $(seq 1 60); do kill -0 $PID 2>/dev/null || break; sleep 1; done
             TARGET=\(shellQuote(target.path))
             NEW=\(shellQuote(newApp.path))
+            # 예전 이름(아나.app)으로 설치돼 있어도 영문 폴더(Ahna.app)로 옮겨 설치합니다(한글 경로에서는 공유 확장이 실행되지 않음).
+            DEST="$(dirname "$TARGET")/Ahna.app"
             BACKUP="${TARGET%.app}-backup-$(date +%s).app"
-            trap '/usr/bin/open "$TARGET" 2>/dev/null || /usr/bin/open "$BACKUP"' EXIT
+            trap '/usr/bin/open "$DEST" 2>/dev/null || /usr/bin/open "$TARGET" 2>/dev/null || /usr/bin/open "$BACKUP"' EXIT
             mv "$TARGET" "$BACKUP"
-            if /usr/bin/ditto "$NEW" "$TARGET"; then
-              /usr/bin/xattr -dr com.apple.quarantine "$TARGET" 2>/dev/null || true
+            [ "$DEST" != "$TARGET" ] && rm -rf "$DEST"
+            if /usr/bin/ditto "$NEW" "$DEST"; then
+              /usr/bin/xattr -dr com.apple.quarantine "$DEST" 2>/dev/null || true
               rm -rf "$BACKUP"
+              /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$DEST" 2>/dev/null || true
             else
-              rm -rf "$TARGET"; mv "$BACKUP" "$TARGET"
+              rm -rf "$DEST"; mv "$BACKUP" "$TARGET"
             fi
             """
             try body.write(to: script, atomically: true, encoding: .utf8)

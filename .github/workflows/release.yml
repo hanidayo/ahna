@@ -207,7 +207,7 @@ jobs:
           exit $st
       - run: |
           mkdir -p dist
-          ditto -c -k --keepParent "mac/dist/아나.app" dist/Ahna-Mac.zip
+          ditto -c -k --keepParent "mac/dist/Ahna.app" dist/Ahna-Mac.zip
       - name: 서버에 올리기 (정식 배포)
         if: ${{ github.event.inputs.publish == 'true' }}
         id: up

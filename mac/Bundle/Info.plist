@@ -12,6 +12,8 @@
 	<string>com.hanidayo.ahna.mac</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
+	<key>LSHasLocalizedDisplayName</key>
+	<true/>
 	<key>CFBundleName</key>
 	<string>Ahna</string>
 	<key>CFBundlePackageType</key>
