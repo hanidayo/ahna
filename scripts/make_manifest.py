@@ -13,7 +13,9 @@ def asset(env):
     value = os.environ.get(env, "").strip()
     if not value: return None
     a = json.loads(value)
-    return {"url": a["url"], "sha256": a["sha256"], "size": a["size"]}
+    return {"url": f"{server}/_ahna/update/{a['name']}", "sha256": a["sha256"], "size": a["size"]}
+missing = [k for k in ("WINDOWS", "IOS", "MAC", "ANDROID") if not os.environ.get(k, "").strip()]
+if missing: sys.exit("빌드 결과를 받지 못했습니다: " + ", ".join(missing))
 platforms = {k: v for k, v in {"windows": asset("WINDOWS"), "ios": asset("IOS"), "mac": asset("MAC"), "android": asset("ANDROID")}.items() if v}
 setup = asset("WINDOWS_SETUP")
 manifest = {
@@ -24,6 +26,6 @@ manifest = {
 }
 folder = pathlib.Path(tempfile.mkdtemp())
 (folder / "latest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
-print(json.dumps(manifest, ensure_ascii=False, indent=2))
+print("버전", version, "· 플랫폼", ", ".join(platforms))
 # 앱 파일을 모두 올린 뒤 마지막에 올립니다(서버는 여기에 없는 예전 파일을 지웁니다).
 subprocess.run([sys.executable, str(root / "scripts/upload.py"), str(folder / "latest.json"), "latest.json", "manifest"], check=True)

@@ -28,7 +28,8 @@ for attempt in range(3):
         break
     except Exception as e:
         if attempt == 2: sys.exit(f"{name} 올리기 실패: {e}")
-asset = {"name": name, "url": f"{server}/_ahna/update/{name}", "sha256": digest.hexdigest(), "size": size}
+# 작업 출력에는 서버 주소를 넣지 않습니다(비밀값이 들어간 출력은 GitHub가 다음 작업으로 넘기지 않음).
+asset = {"name": name, "sha256": digest.hexdigest(), "size": size}
 line = json.dumps(asset)
 if os.environ.get("GITHUB_OUTPUT"):
     with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as o: o.write(f"{output}={line}\n")
