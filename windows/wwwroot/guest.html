@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex,nofollow">
+<title>아나</title>
+<style>
+:root{--bg:#eef1f5;--surface:#fff;--subtle:#e9ebef;--border:#e3e6ea;--borderStrong:#c5cad1;--text:#1f2328;--muted:#5b636e;--faint:#6b7280;--accent:#005fb8;--accentHover:#1a6fc2;--onAccent:#fff;--accentSoft:#e5eff9;--danger:#c4372f;--dangerSoft:#fdecea;--focus:#005fb840}
+@media (prefers-color-scheme:dark){:root{--bg:#1c1c1c;--surface:#272727;--subtle:#2e2e2e;--border:#3a3a3a;--borderStrong:#555555;--text:#e8eaed;--muted:#a7aeb8;--faint:#9aa1ab;--accent:#4cc2ff;--accentHover:#6fd0ff;--onAccent:#002033;--accentSoft:#16303f;--danger:#f2786f;--dangerSoft:#3a2321;--focus:#4cc2ff55}}
+*{box-sizing:border-box}html,body{margin:0;min-height:100%}
+body{background:var(--bg);color:var(--text);font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans KR","Malgun Gothic",system-ui,sans-serif;-webkit-text-size-adjust:100%}
+[hidden]{display:none!important}
+.contents{display:contents}
+section{display:flex;flex-direction:column;gap:16px}
+main{max-width:480px;min-height:100vh;min-height:100dvh;margin:0 auto;display:flex;flex-direction:column;gap:16px;padding:36px 24px calc(24px + env(safe-area-inset-bottom))}
+.head{display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center}
+.logo{display:grid;place-items:center;width:56px;height:56px;border-radius:16px;background:var(--accent);color:var(--onAccent)}
+h1{margin:0;font-size:22px;font-weight:700;line-height:1.35;overflow-wrap:anywhere}
+.sub{margin:6px 0 0;font-size:13px;color:var(--muted)}
+.card{display:flex;flex-direction:column;gap:2px;padding:6px 14px;border-radius:16px;background:var(--surface);border:1px solid var(--border)}
+.row{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)}
+.row:last-child{border-bottom:0}
+.thumb{flex:none;display:grid;place-items:center;width:44px;height:44px;border-radius:9px;background:var(--accentSoft);color:var(--accent);font-size:11px;font-weight:700;text-transform:uppercase;overflow:hidden}
+.meta{flex:1;min-width:0}.meta b{display:block;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.meta small{display:block;font-size:12px;color:var(--faint)}
+.x{flex:none;display:grid;place-items:center;width:40px;height:40px;border:0;border-radius:10px;background:transparent;color:var(--muted);cursor:pointer}
+.x:hover{background:var(--subtle)}
+.primary{display:grid;place-items:center;width:100%;height:54px;border:0;border-radius:14px;background:var(--accent);color:var(--onAccent);font:inherit;font-size:16px;font-weight:700;cursor:pointer;text-decoration:none}
+.primary:hover{background:var(--accentHover)}.primary:disabled{opacity:.5;cursor:default}
+.secondary{display:grid;place-items:center;width:100%;height:46px;border:1px solid var(--border);border-radius:12px;background:var(--surface);color:var(--text);font:inherit;font-weight:600;cursor:pointer}
+button:focus-visible,input:focus-visible,.pick:focus-within{outline:none;box-shadow:0 0 0 3px var(--focus)}
+.hint{margin:0;font-size:12px;color:var(--faint);text-align:center}
+.pick{display:flex;flex-direction:column;align-items:center;gap:6px;padding:26px 12px;border:1.5px dashed var(--borderStrong);border-radius:16px;background:var(--surface);text-align:center;cursor:pointer}
+.pick input{position:absolute;width:1px;height:1px;opacity:0}
+.pickIcon{display:grid;place-items:center;width:46px;height:46px;border-radius:50%;background:var(--accentSoft);color:var(--accent)}
+.pick b{font-weight:700}.pick small{font-size:12px;color:var(--faint)}
+label.field{font-size:12px;color:var(--muted)}
+input.text{width:100%;height:46px;padding:0 14px;border:1px solid var(--border);border-radius:12px;background:var(--surface);color:var(--text);font:inherit;font-size:16px}
+.progress{display:flex;flex-direction:column;gap:8px}
+.progressLine{display:flex;justify-content:space-between;gap:10px;font-size:13px;color:var(--muted)}
+.progressLine span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.progressLine b{color:var(--accent)}
+.bar{height:8px;border-radius:4px;background:var(--subtle);overflow:hidden}.bar i{display:block;width:0;height:8px;border-radius:4px;background:var(--accent);transition:width .2s}
+.result{display:flex;flex-direction:column;align-items:center;gap:8px;padding:20px 0;text-align:center}
+.result strong{font-size:17px}.result span{font-size:12px;color:var(--faint)}.result .lead{font-size:13px;color:var(--muted)}
+.ok{display:grid;place-items:center;width:52px;height:52px;border-radius:50%;background:var(--accentSoft);color:var(--accent)}
+.no{display:grid;place-items:center;width:52px;height:52px;border-radius:50%;background:var(--dangerSoft);color:var(--danger)}
+.dots{display:flex;gap:6px}.dots i{width:10px;height:10px;border-radius:50%;background:var(--accent);animation:pulse 1.2s infinite ease-in-out}.dots i:nth-child(2){animation-delay:.2s}.dots i:nth-child(3){animation-delay:.4s}
+@keyframes pulse{0%,100%{opacity:.3}50%{opacity:1}}
+@media (prefers-reduced-motion:reduce){.dots i{animation:none}.dots i:nth-child(2){opacity:.6}.dots i:nth-child(3){opacity:.3}}
+.code{display:flex;gap:6px;margin-top:4px}.code span{display:grid;place-items:center;width:42px;height:50px;border-radius:10px;border:1px solid var(--border);background:var(--surface);font-size:26px;font-weight:700;font-variant-numeric:tabular-nums}
+.error{margin:0;padding:10px 12px;border-radius:10px;background:var(--dangerSoft);color:var(--danger);font-size:13px;overflow-wrap:anywhere}
+footer{margin-top:auto;font-size:12px;color:var(--faint);text-align:center}
+</style>
+</head>
+<body>
+<main>
+  <div class="head">
+    <span class="logo" aria-hidden="true"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg></span>
+    <div><h1 id="title">아나</h1><p id="subtitle" class="sub">불러오는 중…</p></div>
+  </div>
+
+  <!-- 받기 (상대가 보낸 파일) -->
+  <section id="receive" hidden>
+    <div id="fileCard" class="card" aria-label="받을 파일"></div>
+    <div id="receiveBefore" class="contents">
+      <button id="receiveAll" type="button" class="primary">모두 받기</button>
+      <p class="hint">사진은 받은 뒤 '사진에 저장'을 누르면 앨범에 들어갑니다</p>
+    </div>
+  </section>
+
+  <!-- 보내기 (이 링크의 주인에게 올리기) -->
+  <section id="upload" hidden>
+    <label class="pick" id="pickLabel">
+      <span class="pickIcon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg></span>
+      <b>사진 · 파일 고르기</b>
+      <small>여러 개를 한 번에 고를 수 있습니다 · 파일당 최대 4 GB</small>
+      <input id="files" type="file" multiple>
+    </label>
+    <div id="picked" class="card" aria-label="보낼 파일" hidden></div>
+    <label class="field" for="senderName">보내는 사람 이름 (상대 화면에 표시)</label>
+    <input id="senderName" class="text" maxlength="40" autocomplete="nickname" placeholder="예: 민수">
+    <button id="send" type="button" class="primary" disabled>보내기</button>
+  </section>
+
+  <div id="progress" class="progress" hidden>
+    <div class="progressLine"><span id="progressName"></span><b id="progressPct">0%</b></div>
+    <div class="bar" aria-hidden="true"><i id="progressBar"></i></div>
+  </div>
+
+  <div id="waiting" class="result" hidden>
+    <span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>
+    <strong>상대가 받기를 누르면 전송됩니다</strong>
+    <span class="lead">이 화면을 닫지 마세요</span>
+    <span id="codeLabel" class="lead" hidden>상대 화면의 숫자와 같은지 확인하세요</span>
+    <span id="code" class="code" hidden></span>
+  </div>
+
+  <div id="done" class="result" hidden>
+    <span class="ok" aria-hidden="true"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
+    <strong id="doneTitle">보냈습니다</strong>
+    <span>이 링크는 이제 사용할 수 없습니다</span>
+    <button id="savePhotos" type="button" class="secondary" hidden>사진에 저장</button>
+  </div>
+
+  <div id="ended" class="result" hidden>
+    <span class="no" aria-hidden="true"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></span>
+    <strong id="endedTitle">링크가 만료되었습니다</strong>
+    <span id="endedText">이 링크는 더 이상 사용할 수 없습니다</span>
+  </div>
+
+  <p id="error" class="error" role="alert" hidden></p>
+  <footer id="foot">아나</footer>
+</main>
+<script>
+'use strict';
+(function () {
+  const $ = id => document.getElementById(id);
+  const base = location.pathname.replace(/\/+$/, '');
+  const size = n => n < 1024 ? n + ' B' : n < 1048576 ? (n / 1024).toFixed(1) + ' KB' : n < 1073741824 ? (n / 1048576).toFixed(1) + ' MB' : (n / 1073741824).toFixed(2) + ' GB';
+  const MAX = 4294967296;
+  let info = null, deadline = 0, busy = false, picked = [], photoFiles = [];
+  function el(tag, text, cls) { const e = document.createElement(tag); if (text !== undefined) e.textContent = text; if (cls) e.className = cls; return e; }
+  function error(text) { $('error').textContent = text || ''; $('error').hidden = !text; }
+  function ext(name) { const m = /\.([A-Za-z0-9]{1,5})$/.exec(name); return m ? m[1] : ''; }
+  function fileRow(name, bytes, onRemove) {
+    const row = el('div', undefined, 'row');
+    row.append(el('span', ext(name) || '파일', 'thumb'));
+    const meta = el('span', undefined, 'meta'); meta.append(el('b', name), el('small', size(bytes))); row.append(meta);
+    if (onRemove) {
+      const x = el('button', undefined, 'x'); x.type = 'button'; x.setAttribute('aria-label', name + ' 빼기');
+      x.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>';
+      x.onclick = onRemove; row.append(x);
+    }
+    return row;
+  }
+  function progress(name, pct) {
+    $('progress').hidden = false; $('progressName').textContent = name;
+    $('progressPct').textContent = pct + '%'; $('progressBar').style.width = pct + '%';
+  }
+  function tick() {
+    if (!deadline) return;
+    const left = Math.max(0, Math.round((deadline - Date.now()) / 1000));
+    $('foot').textContent = left > 0 ? Math.floor(left / 60) + ':' + String(left % 60).padStart(2, '0') + ' 뒤 링크가 사라집니다 · 아나' : '아나';
+    if (left === 0 && !busy && $('done').hidden) ended('링크가 만료되었습니다', '보낸 사람에게 새 링크를 부탁하세요');
+  }
+  function ended(title, text) {
+    deadline = 0; $('foot').textContent = '아나';
+    for (const x of ['receive', 'upload', 'progress', 'waiting', 'done']) $(x).hidden = true;
+    $('endedTitle').textContent = title; $('endedText').textContent = text; $('ended').hidden = false;
+  }
+  function finished(title) {
+    deadline = 0; $('foot').textContent = '아나';
+    for (const x of ['receiveBefore', 'upload', 'progress', 'waiting', 'ended']) $(x).hidden = true;
+    $('doneTitle').textContent = title; $('done').hidden = false;
+  }
+  async function getJson(path) {
+    const r = await fetch(base + path, { cache: 'no-store', credentials: 'omit' });
+    if (r.status === 404) { const e = new Error('expired'); e.expired = true; throw e; }
+    if (!r.ok) throw new Error('연결하지 못했습니다 (' + r.status + '). 잠시 후 다시 시도하세요.');
+    return r.json();
+  }
+  async function postJson(path, body) {
+    const r = await fetch(base + path, { method: 'POST', cache: 'no-store', credentials: 'omit', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+    let data = null; try { data = await r.json(); } catch (e) {}
+    if (r.status === 404) { const e = new Error('expired'); e.expired = true; throw e; }
+    if (!r.ok) throw new Error((data && data.error) || '요청하지 못했습니다 (' + r.status + ').');
+    return data;
+  }
+
+  /* 받기: 상대가 보낸 파일 */
+  function renderReceive() {
+    $('title').textContent = info.owner + '님이\n파일을 보냈습니다';
+    $('title').style.whiteSpace = 'pre-line';
+    $('subtitle').textContent = '아나로 보낸 파일 · 앱 없이 받을 수 있습니다';
+    $('fileCard').replaceChildren(...info.files.map(f => fileRow(f.name, f.bytes)));
+    const total = info.files.reduce((a, f) => a + f.bytes, 0);
+    $('receiveAll').textContent = (info.files.length > 1 ? '모두 받기 · ' : '받기 · ') + size(total);
+    $('receive').hidden = false;
+  }
+  function saveBlob(blob, name) {
+    const url = URL.createObjectURL(blob), a = el('a');
+    a.href = url; a.download = name; a.rel = 'noopener'; document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 120000);
+  }
+  function saveLink(i, name) { const a = el('a'); a.href = base + '/file/' + i; a.download = name; document.body.append(a); a.click(); a.remove(); }
+  async function fetchFile(f, onBytes) {
+    const r = await fetch(base + '/file/' + f.i, { cache: 'no-store', credentials: 'omit' });
+    if (r.status === 404) { const e = new Error('expired'); e.expired = true; throw e; }
+    if (!r.ok) throw new Error('받지 못했습니다 (' + r.status + ').');
+    if (!r.body || !r.body.getReader) { const b = await r.blob(); onBytes(f.bytes); return b; }
+    const reader = r.body.getReader(), parts = []; let got = 0;
+    for (;;) { const { done, value } = await reader.read(); if (done) break; parts.push(value); got += value.byteLength; onBytes(got); }
+    if (got !== f.bytes) throw new Error('받는 중에 연결이 끊겼습니다. 다시 눌러 주세요.');
+    return new Blob(parts, { type: /\.(jpe?g)$/i.test(f.name) ? 'image/jpeg' : /\.png$/i.test(f.name) ? 'image/png' : /\.heic$/i.test(f.name) ? 'image/heic' : /\.gif$/i.test(f.name) ? 'image/gif' : /\.mov$/i.test(f.name) ? 'video/quicktime' : /\.mp4$/i.test(f.name) ? 'video/mp4' : 'application/octet-stream' });
+  }
+  $('receiveAll').onclick = async () => {
+    if (busy) return;
+    busy = true; error(''); $('receiveAll').disabled = true; $('receiveBefore').hidden = true;
+    const total = info.files.reduce((a, f) => a + f.bytes, 0) || 1; let before = 0;
+    photoFiles = [];
+    try {
+      for (const f of info.files) {
+        progress('받는 중 · ' + f.name, Math.round(before / total * 100));
+        if (f.bytes > 400 * 1048576) { saveLink(f.i, f.name); await new Promise(r => setTimeout(r, 1500)); }
+        else {
+          const blob = await fetchFile(f, got => progress('받는 중 · ' + f.name, Math.min(100, Math.round((before + got) / total * 100))));
+          if (/^(image|video)\//.test(blob.type)) { try { photoFiles.push(new File([blob], f.name, { type: blob.type })); } catch (e) {} }
+          saveBlob(blob, f.name);
+        }
+        before += f.bytes;
+      }
+      progress('받는 중', 100);
+      finished('모두 받았습니다');
+      $('savePhotos').hidden = !(photoFiles.length && navigator.canShare && navigator.canShare({ files: photoFiles }));
+    } catch (e) {
+      if (e.expired) ended('링크가 만료되었습니다', '보낸 사람에게 새 링크를 부탁하세요');
+      else { error(e.message); $('progress').hidden = true; $('receiveBefore').hidden = false; $('receiveAll').disabled = false; }
+    } finally { busy = false; }
+  };
+  $('savePhotos').onclick = async () => { try { await navigator.share({ files: photoFiles }); } catch (e) {} };
+
+  /* 보내기: 이 링크의 주인에게 올리기 */
+  function cleanName(name) {
+    let n = String(name || '').normalize('NFC').replace(/[\u0000-\u001f<>:"|?*\/\\]/g, '_').replace(/[ .]+$/, '');
+    if (!n) n = '파일';
+    return n.length > 180 ? n.slice(0, 170) + (ext(n) ? '.' + ext(n) : '') : n;
+  }
+  function renderPicked() {
+    $('picked').replaceChildren(...picked.map((f, i) => fileRow(f.name, f.size, () => { picked.splice(i, 1); renderPicked(); })));
+    $('picked').hidden = !picked.length;
+    $('send').disabled = !picked.length || busy;
+    $('send').textContent = picked.length ? '보내기 · ' + picked.length + '개 · ' + size(picked.reduce((a, f) => a + f.size, 0)) : '보내기';
+  }
+  function renderUpload() {
+    $('title').textContent = info.owner + '에게 보내기';
+    $('subtitle').textContent = '앱 없이 보낼 수 있습니다';
+    try { $('senderName').value = localStorage.getItem('ahna-guest-name') || ''; } catch (e) {}
+    if (!$('senderName').value) { const ua = navigator.userAgent; $('senderName').value = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android' : ''; }
+    $('upload').hidden = false; renderPicked();
+  }
+  $('files').onchange = e => {
+    const list = [...e.target.files]; e.target.value = '';
+    if (list.some(f => f.size > MAX)) error('파일 한 개는 최대 4 GB까지 보낼 수 있습니다.'); else error('');
+    picked.push(...list.filter(f => f.size <= MAX));
+    if (picked.length > 1000) picked = picked.slice(0, 1000);
+    renderPicked();
+  };
+  function sendFile(i, f, name, onBytes) {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', base + '/upload?i=' + i + '&name=' + encodeURIComponent(name));
+      xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+      xhr.upload.onprogress = e => { if (e.lengthComputable) onBytes(e.loaded); };
+      xhr.onload = () => { if (xhr.status >= 200 && xhr.status < 300) resolve(); else { let m; try { m = JSON.parse(xhr.responseText).error; } catch (e) {} const err = new Error(m || '보내지 못했습니다 (' + xhr.status + ').'); err.expired = xhr.status === 404; reject(err); } };
+      xhr.onerror = () => reject(new Error('연결이 끊겼습니다. 인터넷 연결을 확인하세요.'));
+      xhr.send(f);
+    });
+  }
+  async function waitForAnswer() {
+    for (;;) {
+      await new Promise(r => setTimeout(r, 1000));
+      let s;
+      try { s = await getJson('/status'); } catch (e) { if (e.expired) return 'expired'; continue; }
+      if (s.code && $('code').hidden) showCode(s.code);
+      if (s.state !== 'waiting') return s.state;
+    }
+  }
+  function showCode(code) {
+    $('code').replaceChildren(...String(code).split('').map(d => el('span', d)));
+    $('code').setAttribute('aria-label', '확인 숫자 ' + code); $('code').hidden = false; $('codeLabel').hidden = false;
+  }
+  $('send').onclick = async () => {
+    if (busy || !picked.length) return;
+    const sender = $('senderName').value.trim().slice(0, 40);
+    if (!sender) { error('보내는 사람 이름을 입력하세요.'); $('senderName').focus(); return; }
+    try { localStorage.setItem('ahna-guest-name', sender); } catch (e) {}
+    busy = true; error(''); $('send').disabled = true;
+    const files = picked.map(f => ({ name: cleanName(f.name), bytes: f.size }));
+    try {
+      const r = await postJson('/request', { name: sender, files });
+      $('upload').hidden = true; $('waiting').hidden = false;
+      if (r && r.code) showCode(r.code);
+      const state = r && r.state !== 'waiting' ? r.state : await waitForAnswer();
+      $('waiting').hidden = true;
+      if (state === 'declined') { ended(info.owner + '에서 받지 않았습니다', '상대가 거절했거나 응답이 없었습니다'); return; }
+      if (state === 'expired') { ended('링크가 만료되었습니다', '받는 사람에게 새 링크를 부탁하세요'); return; }
+      if (state !== 'accepted' && state !== 'transferring') { ended('보내지 못했습니다', '받는 사람에게 새 링크를 부탁하세요'); return; }
+      const total = files.reduce((a, f) => a + f.bytes, 0) || 1; let before = 0;
+      for (let i = 0; i < picked.length; i++) {
+        progress('보내는 중 · ' + files[i].name, Math.round(before / total * 100));
+        await sendFile(i, picked[i], files[i].name, got => progress('보내는 중 · ' + files[i].name, Math.min(100, Math.round((before + got) / total * 100))));
+        before += files[i].bytes;
+      }
+      progress('보내는 중', 100);
+      finished('보냈습니다');
+    } catch (e) {
+      if (e.expired) ended('링크가 만료되었습니다', '받는 사람에게 새 링크를 부탁하세요');
+      else { error(e.message); $('progress').hidden = true; $('waiting').hidden = true; if ($('done').hidden && $('ended').hidden) { $('upload').hidden = false; } }
+    } finally { busy = false; renderPicked(); }
+  };
+  window.addEventListener('beforeunload', e => { if (busy) { e.preventDefault(); e.returnValue = ''; } });
+
+  (async () => {
+    try {
+      info = await getJson('/info');
+      if (!info || (info.kind !== 'send' && info.kind !== 'receive')) throw new Error('올바르지 않은 링크입니다.');
+      deadline = Date.now() + Math.max(0, info.expiresIn | 0) * 1000;
+      document.title = '아나 · ' + info.owner;
+      if (info.state === 'done') { $('title').textContent = info.owner; $('subtitle').textContent = '아나'; finished(info.kind === 'send' ? '모두 받았습니다' : '보냈습니다'); return; }
+      if (info.state === 'declined' || info.state === 'expired') { $('title').textContent = info.owner; $('subtitle').textContent = '아나'; ended('링크가 만료되었습니다', '이 링크는 더 이상 사용할 수 없습니다'); return; }
+      if (info.kind === 'send') renderReceive();
+      else if (info.state === 'ready') renderUpload();
+      else { $('title').textContent = info.owner + '에게 보내기'; $('subtitle').textContent = '아나'; ended('이미 사용한 링크입니다', '받는 사람에게 새 링크를 부탁하세요'); return; }
+      tick(); setInterval(tick, 1000);
+    } catch (e) {
+      $('title').textContent = '아나'; $('subtitle').textContent = '';
+      if (e.expired) ended('링크가 만료되었습니다', '이 링크는 더 이상 사용할 수 없습니다');
+      else error(e.message);
+    }
+  })();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+Ahna Android (Android 10 이상)
+
+설치 파일: GitHub 릴리스의 Ahna-Android.apk
+https://github.com/hanidayo/ahna-releases/releases/latest
+
+업데이트: 앱이 새 버전을 알려 주면 [내려받기] → 받은 APK를 열어 설치합니다.
+같은 서명 키로 만든 APK라 기존 앱 위에 그대로 업데이트되고 설정이 유지됩니다.
+
+빌드
+- GitHub Actions가 릴리스 때 자동으로 만듭니다. 저장소 비밀값 ANDROID_KEYSTORE_BASE64 / ANDROID_KEY_PASSWORD 필요.
+- 직접 만들 때: AHNA_KEY_PASSWORD=<암호> python build_apk.py --jdk <JDK17> --sdk <AndroidSDK> --keystore <키 파일> --alias ahna
+- 서명 키(Ahna.keystore)와 암호는 저장소에 올리지 않습니다. 잃어버리면 기존 앱을 지우고 새로 설치해야 합니다.
+
+Java-WebSocket 1.6.0, SLF4J 2.0.13 사용 (app/src/main/assets/THIRD-PARTY-LICENSES.txt).

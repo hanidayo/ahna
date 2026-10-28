@@ -1,0 +1,8 @@
+plugins { id 'com.android.application' }
+android {
+    namespace 'me.ahna'
+    compileSdk 35
+    defaultConfig { applicationId 'me.ahna'; minSdk 29; targetSdk 35; versionCode 10001; versionName '1.0.1' }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_11; targetCompatibility JavaVersion.VERSION_11 }
+}
+dependencies { implementation files('libs/websocket.jar', 'libs/slf4j.jar', 'libs/slf4j-nop.jar') }

@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDisplayName</key>
+	<string>아나</string>
+	<key>CFBundleExecutable</key>
+	<string>Ahna</string>
+	<key>CFBundleIconFile</key>
+	<string>Ahna.icns</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.hanidayo.ahna.mac</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>Ahna</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0.1</string>
+	<key>CFBundleSupportedPlatforms</key>
+	<array>
+		<string>MacOSX</string>
+	</array>
+	<key>CFBundleVersion</key>
+	<string>10001</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.utilities</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>근처에 있는 아나 기기를 찾고, 등록하지 않은 가까운 기기와 파일을 주고받을 때 Bluetooth를 사용합니다.</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>13.0</string>
+	<key>LSMultipleInstancesProhibited</key>
+	<true/>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Windows Ahna와 로컬 네트워크에서 파일을 주고받습니다.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>사용자가 선택한 사진을 사진 보관함에 추가합니다.</string>
+	<key>NSPrincipalClass</key>
+	<string>NSApplication</string>
+</dict>
+</plist>

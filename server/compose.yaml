@@ -1,0 +1,50 @@
+# 아나(Ahna) 서버
+# 이미지는 GitHub Actions가 빌드해 GHCR에 올립니다. NAS에서 빌드할 필요가 없습니다.
+# 서버 업데이트: 아래 watchtower가 매일 04:30 새 이미지를 확인해 아나 컨테이너만 바꿉니다.
+# 앱 업데이트: GitHub Actions가 빌드한 앱 파일을 서버로 직접 올립니다(ahna-data 볼륨). 컨테이너를 다시 만들 필요가 없습니다.
+services:
+  ahna:
+    image: ghcr.io/hanidayo/ahna-relay:1
+    container_name: ahna-relay
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:45833:8080"
+    environment:
+      AHNA_ORIGIN: ${AHNA_ORIGIN:?Set AHNA_ORIGIN in .env}
+      AHNA_KEY: ${AHNA_KEY:?Generate a random key in .env}
+      AHNA_INVITE: ${AHNA_INVITE:?Set the invite code in .env}
+      AHNA_PUBLISH_KEY: ${AHNA_PUBLISH_KEY:-}
+    volumes:
+      - ahna-data:/data
+    labels:
+      - com.centurylinklabs.watchtower.enable=true
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 256m
+    pids_limit: 128
+    logging:
+      driver: json-file
+      options:
+        max-size: "2m"
+        max-file: "2"
+
+  watchtower:
+    image: containrrr/watchtower:1.7.1
+    container_name: ahna-watchtower
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      WATCHTOWER_LABEL_ENABLE: "true"      # ahna 컨테이너만 갱신
+      WATCHTOWER_CLEANUP: "true"           # 이전 이미지 정리
+      WATCHTOWER_SCHEDULE: "0 30 4 * * *"  # 매일 04:30
+      TZ: Asia/Seoul
+    mem_limit: 64m
+
+volumes:
+  ahna-data:

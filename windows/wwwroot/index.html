@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><title>아나</title><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script></head>
+<body>
+<header class="topbar">
+  <a class="brand" href="/"><span class="logo" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg></span><span class="name">아나</span></a>
+  <span id="versionChip" class="versionChip" hidden></span>
+  <span class="status"><i aria-hidden="true"></i><span id="deviceLabel">연결 대기 중</span></span>
+  <div class="topActions whenPaired">
+    <button id="settings" type="button" class="btn headBtn" aria-haspopup="dialog" aria-controls="drawer" aria-expanded="false" hidden><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>옵션</button>
+    <button id="logout" type="button" class="btn headBtn btnClose" title="이 화면의 연결을 끊습니다"><span class="xDot" aria-hidden="true"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></span>연결 해제</button>
+  </div>
+</header>
+
+<main class="page">
+<section id="pair" class="panel pairPanel">
+  <div class="panelHead"><h2>컴퓨터와 연결하기</h2></div>
+  <div class="panelBody">
+    <p class="lead">받을 컴퓨터의 아나에 표시된 6자리 연결 코드를 입력하세요.</p>
+    <form id="pairForm">
+      <label for="deviceName">이 기기 이름</label><input id="deviceName" maxlength="40" placeholder="예: 나의 iPhone" required>
+      <label for="pin">연결 코드</label><input id="pin" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="off" placeholder="000000" required>
+      <button type="submit" class="btn primary wide">연결하기</button>
+    </form>
+    <p class="fine">이 화면을 열어 두면 컴퓨터에서 이 기기로 파일을 보낼 수 있습니다.</p>
+    <p id="pairLocalHint" class="fine localHint" hidden>이 컴퓨터의 아나 창이 이 화면으로 바뀌었다면 트레이의 아나 아이콘을 눌러 새로 여세요.</p>
+  </div>
+</section>
+
+<section id="workspace" hidden>
+  <div class="grid">
+    <div class="col">
+      <section id="ownerPanel" hidden class="panel">
+        <div class="panelHead"><h2>이 컴퓨터에 연결하기</h2><span class="hint">다른 기기의 아나에서 추가</span></div>
+        <div class="panelBody codeCard">
+          <div class="codeInfo">
+            <span class="fieldLabel">연결 코드</span>
+            <strong id="code" class="code"></strong>
+            <div id="urls" class="urls"></div>
+          </div>
+          <button id="revoke" type="button" class="btn">모든 기기 해제 · 코드 변경</button>
+        </div>
+        <p class="fine cardFoot">다른 기기의 아나에서 <b>기기 추가</b>를 누르고 서버 주소와 연결 코드를 입력하세요.</p>
+      </section>
+
+      <section id="sendPanel" class="panel">
+        <div class="panelHead"><h2 id="sendTitle">보내기</h2><button id="qrOpen" type="button" class="btn small qrBtn" title="QR로 보내기 / 받기 · 앱 없는 휴대폰과 주고받기" hidden><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17 20h4v-3"/></svg>QR</button></div>
+        <div class="panelBody stack">
+          <div id="browserSend" class="stack">
+            <label class="drop" id="drop"><span class="dropIcon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg></span><strong>파일을 선택하거나 여기에 놓으세요</strong><small>사진 · 문서 · 동영상 / 파일당 최대 4 GiB</small><input id="files" type="file" multiple></label>
+            <div class="actions"><label class="btn fileButton">폴더 선택<input id="folder" type="file" webkitdirectory multiple></label><button id="cancel" type="button" class="btn" hidden>전송 중단</button></div>
+            <p class="fine">폴더 선택이 안 되면 ZIP으로 압축해 보내세요.</p>
+          </div>
+          <div id="windowsSend" class="stack" hidden>
+            <span id="myDevicesLabel" class="fieldLabel" hidden>내 기기</span>
+            <div id="targets" class="chips" role="radiogroup" aria-label="받을 기기"></div>
+            <div id="nearbyBox" class="nearbyBox" hidden>
+              <span class="nearLabel"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" class="nearIcon" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 7 10 10-5 5V2l5 5L7 17"/></svg>근처 기기</span>
+              <div id="nearbyList" class="nearList" role="radiogroup" aria-label="근처 기기"></div>
+            </div>
+            <p id="nearbyNote" class="fine nearNote" hidden>등록한 기기에만 보낼 수 있습니다.</p>
+            <div id="nearbySend" class="nearSend" aria-live="polite" hidden>
+              <span id="nearSendAvatar" class="nearAvatar big" aria-hidden="true"></span>
+              <strong id="nearSendTitle" class="nearSendTitle"></strong>
+              <span id="nearSendText" class="nearSendText"></span>
+              <span id="nearSendCode" class="nearCode" hidden></span>
+              <div id="nearSendProgress" class="nearProgress" hidden><progress id="nearSendBar" max="100" value="0"></progress><span id="nearSendPercent"></span></div>
+              <span id="nearSendHint" class="nearSendHint"></span>
+              <button id="nearSendCancel" type="button" class="btn">보내기 취소</button>
+            </div>
+            <button id="pick" type="button" class="drop dropButton"><span class="dropIcon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg></span><strong>보낼 파일이나 폴더를 선택하세요</strong><small>여기에 파일을 끌어다 놓아도 됩니다 · 파일당 최대 4 GiB · 폴더는 ZIP으로 보냅니다</small></button>
+            <p class="fine sendNote">내 서버를 통해 어디서나 · 파일은 어디에도 저장되지 않습니다</p>
+          </div>
+          <div id="progressBox" hidden><div class="progressLabel"><span id="progressName"></span><span id="progressPercent"></span></div><progress id="progress" max="100" value="0"></progress><div class="actions end" id="outCancelRow" hidden><button id="outCancel" type="button" class="btn small">전송 중단</button></div></div>
+        </div>
+      </section>
+    </div>
+
+    <div class="col">
+      <section id="clipboardPanel" class="panel" hidden>
+        <div class="panelHead"><h2>클립보드</h2><div class="headActions"><button id="nativeClipboard" type="button" class="btn small" hidden>Windows 클립보드 창</button><button id="pasteClipboard" type="button" class="btn small">붙여넣기</button></div></div>
+        <div class="panelBody stack">
+          <label for="clipboardDraft" class="srOnly">보낼 글자 · 최대 64 KB</label><textarea id="clipboardDraft" rows="4" placeholder="보낼 글자를 입력하거나 붙여넣으세요 · 최대 64 KB"></textarea>
+          <button id="sendClipboard" type="button" class="btn primary wide">글자 보내기</button>
+          <div id="clipboardInbox" class="clipList" aria-label="받은 글자"></div>
+          <p class="fine">받은 글자는 최근 20개를 최대 24시간 보관하며, 컴퓨터의 아나를 종료하면 지워집니다.</p>
+        </div>
+      </section>
+    </div>
+
+    <div class="col">
+      <section id="receivedPanel" class="panel" hidden>
+        <div class="panelHead"><h2>도착한 파일 <span id="receivedCount" class="count">0</span></h2><button id="openFolder" type="button" class="btn small accentText">폴더에서 보기</button></div>
+        <div class="panelBody list">
+          <div id="received"></div>
+          <p id="savePath" class="fine"></p>
+        </div>
+      </section>
+
+      <section id="inboxPanel" class="panel">
+        <div class="panelHead"><h2><span id="inboxLabel">도착한 파일</span> <span id="itemCount" class="count">0</span></h2></div>
+        <div class="panelBody list">
+          <div id="inbox"></div>
+          <p id="inboxNote" class="fine">다운로드를 눌러 저장하세요. 폴더는 ZIP으로 받습니다. 파일은 24시간 또는 컴퓨터의 아나를 종료할 때까지 받을 수 있습니다.</p>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panelHead"><h2>전송 기록 · 최근 20개</h2><button id="clearHistory" type="button" class="btn small" hidden>목록 초기화</button></div>
+        <div class="panelBody list">
+          <div id="history"></div>
+          <p class="fine">‘응답 전송 완료’는 컴퓨터가 데이터를 보낸 상태이며, 상대 기기의 저장 완료를 뜻하지는 않습니다.</p>
+        </div>
+      </section>
+    </div>
+  </div>
+</section>
+</main>
+
+<div id="drawerDim" class="drawerDim" aria-hidden="true"></div>
+<aside id="drawer" class="drawer" role="dialog" aria-modal="true" aria-labelledby="drawerTitle" aria-hidden="true" inert>
+  <div class="drawerHead">
+    <h2 id="drawerTitle">옵션</h2>
+    <button id="drawerClose" type="button" class="iconBtn" aria-label="옵션 닫기"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+  </div>
+  <div class="drawerBody">
+    <section class="optAbout"><span class="logo appLogo" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg></span><span><strong>아나</strong><small>경상도 말로 “옛다, 받아라”</small><small>— 툭 건네듯 주고받으세요</small></span></section>
+    <section id="optNearby" class="optGroup nearOpt" hidden>
+      <h3 class="nearHead"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 7 10 10-5 5V2l5 5L7 17"/></svg>근처 기기에서 받기</h3>
+      <div id="optNearOn" class="nearOptBody">
+        <div id="optNearMode" class="segmented" role="radiogroup" aria-label="근처 기기에서 받기">
+          <button type="button" role="radio" aria-checked="false" data-mode="off">끔</button>
+          <button type="button" role="radio" aria-checked="true" data-mode="registered">등록된 기기만</button>
+          <button type="button" role="radio" aria-checked="false" data-mode="everyone">10분 동안 모두</button>
+        </div>
+        <p class="fine">'10분 동안 모두'를 고르면 근처의 누구나 이 PC로 보낼 수 있고, 받을 때마다 확인 창이 뜹니다.</p>
+        <div id="optNearStatus" class="nearStatus"><i aria-hidden="true"></i><span></span></div>
+      </div>
+      <div id="optNearNone" class="noBt" hidden>
+        <span class="noBtIcon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 7 10 10-5 5V2l5 5L7 17"/><path d="M3 3l18 18"/></svg></span>
+        <span><strong id="optNoBtTitle">이 PC에는 Bluetooth가 없습니다</strong><small id="optNoBtText">근처 기기 보내기·받기는 쓸 수 없고, 등록한 기기와는 지금처럼 주고받습니다. Bluetooth 동글을 꽂으면 자동으로 켜집니다.</small></span>
+      </div>
+      <p id="optNearNas" class="fine" hidden>근처 기기·QR로 주고받으려면 아래 서버 설정이 필요합니다.</p>
+    </section>
+    <section class="optGroup">
+      <h3>연결된 기기</h3>
+      <div id="optDevices" class="linkedList" aria-live="polite"></div>
+      <div class="pairRow">
+        <label for="optPairCode" class="srOnly">상대 기기의 6자리 코드</label>
+        <input id="optPairCode" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="off" placeholder="상대 기기의 6자리 코드">
+        <button id="optPair" type="button" class="btn primary">기기 추가</button>
+      </div>
+    </section>
+    <section class="optGroup">
+      <h3>받은 파일 저장 폴더</h3>
+      <div class="pathRow"><span id="optSavePath" class="pathBox"></span><button id="optPickFolder" type="button" class="btn">폴더 선택</button></div>
+      <p class="fine">저장하면 다음에 받는 파일부터 이 폴더에 저장됩니다.</p>
+    </section>
+    <section class="optGroup switches">
+      <h3>Windows</h3>
+      <div class="switchRow"><span class="switchText"><span id="optStartupLabel">Windows 로그인 시 자동 시작</span><small>켜 두면 컴퓨터를 켤 때 바로 받을 수 있습니다 · 아나 폴더를 옮기지 마세요</small></span><button id="optStartup" type="button" class="switch" role="switch" aria-checked="false" aria-labelledby="optStartupLabel"><span></span></button></div>
+      <div class="switchRow"><span class="switchText"><span id="optExplorerLabel">탐색기 우클릭 메뉴</span><small>‘아나로 보내기’ · Windows 11은 ‘더 많은 옵션 표시’</small></span><button id="optExplorer" type="button" class="switch" role="switch" aria-checked="false" aria-labelledby="optExplorerLabel"><span></span></button></div>
+      <div class="switchRow"><span class="switchText"><span id="optNotifyLabel">파일 송수신 알림</span><small>보내고 받을 때 알림을 띄웁니다</small></span><button id="optNotify" type="button" class="switch" role="switch" aria-checked="false" aria-labelledby="optNotifyLabel"><span></span></button></div>
+      <div class="switchRow"><span class="switchText"><span id="optSavedLabel">상대 기기 저장 완료 알림</span><small>상대 기기에 저장되면 한 번 더 알립니다</small></span><button id="optSaved" type="button" class="switch" role="switch" aria-checked="false" aria-labelledby="optSavedLabel"><span></span></button></div>
+    </section>
+    <section class="optGroup">
+      <div class="optTitleRow"><h3 id="optNasTitle">서버</h3><span id="optNasState" class="pillState"><i aria-hidden="true"></i><span>확인 중</span></span></div>
+      <label id="optNasUrlLabel" for="optNasUrl">HTTPS 주소 (QuickConnect 주소는 쓸 수 없습니다)</label>
+      <input id="optNasUrl" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://이름.synology.me">
+      <label id="optNasKeyLabel" for="optNasKey">연결 키</label>
+      <div class="joinRow"><input id="optNasKey" type="password" autocomplete="off" spellcheck="false" placeholder="저장됨 · 바꿀 때만 새 키 입력"><button id="optJoin" type="button" class="btn primary" hidden>연결</button></div>
+      <p id="optNasStatus" class="fine"></p>
+    </section>
+    <section class="appCard">
+      <span class="logo appLogo" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg></span>
+      <span class="appText"><strong id="optVersion">아나</strong><small id="optUpdateText" aria-live="polite">6시간마다 자동 확인</small></span>
+      <span class="appActions"><button id="optUpdateInstall" type="button" class="btn primary" hidden>설치</button><button id="optUpdateCheck" type="button" class="btn">업데이트 확인</button></span>
+    </section>
+    <p id="optError" class="optError" role="alert" hidden></p>
+  </div>
+  <div class="drawerFoot">
+    <button id="optCancel" type="button" class="btn big">닫기</button>
+    <button id="optSave" type="button" class="btn primary big">저장</button>
+  </div>
+</aside>
+
+<dialog id="clipboardDialog"><h2>받은 글자</h2><textarea id="receivedClipboard" rows="9" readonly aria-label="받은 글자"></textarea><div class="actions end"><button id="copyClipboard" type="button" class="btn primary">복사</button><button id="closeClipboard" type="button" class="btn">닫기</button></div></dialog>
+<div id="dropOverlay" class="dropOverlay" aria-hidden="true" hidden><div class="dropOverlayCard"><span class="dropIcon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg></span><strong id="dropOverlayText">놓으면 보냅니다</strong><small id="dropOverlayHint">파일당 최대 4 GiB · 폴더는 ‘보낼 파일이나 폴더를 선택하세요’로 고르세요</small></div></div>
+<div id="message" role="status" aria-live="polite" hidden></div>
+<footer class="foot"><span id="footVersion">아나 1.0.1</span> · 내 서버를 통해 어디서나 · 파일은 어디에도 저장되지 않습니다</footer>
+</body></html>

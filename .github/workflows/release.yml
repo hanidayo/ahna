@@ -1,0 +1,274 @@
+# 아나 빌드 · 배포
+#
+# Actions › release › Run workflow 로 실행합니다 (version: 1.0.1 처럼).
+#   publish=true  : 서버 이미지(:1 · :latest)를 올리고, 앱 파일을 아나 서버로 바로 올립니다.
+#                   앱들은 6시간마다 서버의 latest.json을 확인해 스스로 업데이트합니다.
+#   publish 비움  : 시험 빌드만 (빌드가 되는지 확인. 공개 저장소이므로 빌드한 파일은 남기지 않습니다)
+#   server_test=true : 서버 이미지를 :test 태그로만 올립니다 (정식 :1 은 그대로)
+#
+# 필요한 비밀값: AHNA_SERVER (아나 서버 주소, 예: https://example.synology.me)
+#               AHNA_PUBLISH_KEY (서버 .env 의 AHNA_PUBLISH_KEY 와 같은 값)
+#               ANDROID_KEYSTORE_BASE64 · ANDROID_KEY_PASSWORD (안드로이드 서명)
+# 소스에는 예시 주소만 있고, 빌드할 때 scripts/set_server.py가 AHNA_SERVER를 넣습니다.
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "버전 (예: 1.0.1)"
+        required: true
+      publish:
+        description: "true면 서버 이미지 + 앱 업데이트를 서버에 게시. 비우면 시험 빌드만"
+        required: false
+        default: "false"
+      server_test:
+        description: "true면 시험 빌드의 서버 이미지를 :test 태그로 올립니다"
+        required: false
+        default: "false"
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  DOTNET_VERSION: "10.0.x"
+  PYTHONUTF8: "1"          # Windows에서 한글 출력 오류 방지
+  PYTHONIOENCODING: "utf-8"
+  AHNA_TEAM_ID: "6PHYY26T68"   # Sideloadly 설치와 같은 Team (Keychain 공유 그룹)
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      v: ${{ steps.v.outputs.v }}
+    steps:
+      - id: v
+        run: |
+          v="${{ github.event.inputs.version }}"
+          echo "v=${v#v}" >> "$GITHUB_OUTPUT"
+
+  server:
+    needs: version
+    runs-on: ubuntu-latest
+    env:
+      DOCKER_BUILD_RECORD_UPLOAD: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 scripts/set_version.py "${{ needs.version.outputs.v }}"
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: 서버 이미지
+        uses: docker/build-push-action@v6
+        with:
+          context: server
+          platforms: linux/amd64,linux/arm64
+          build-args: VERSION=${{ needs.version.outputs.v }}
+          labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          push: ${{ github.event.inputs.publish == 'true' || github.event.inputs.server_test == 'true' }}
+          tags: |
+            ${{ github.event.inputs.publish == 'true' && format('ghcr.io/{0}/ahna-relay:{1}', github.repository_owner, needs.version.outputs.v) || '' }}
+            ${{ github.event.inputs.publish == 'true' && format('ghcr.io/{0}/ahna-relay:1', github.repository_owner) || '' }}
+            ${{ github.event.inputs.publish == 'true' && format('ghcr.io/{0}/ahna-relay:latest', github.repository_owner) || '' }}
+            ${{ github.event.inputs.publish != 'true' && format('ghcr.io/{0}/ahna-relay:test', github.repository_owner) || '' }}
+
+  windows:
+    needs: version
+    runs-on: windows-latest
+    outputs:
+      zip: ${{ steps.zip.outputs.asset }}
+      setup: ${{ steps.setup.outputs.asset }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with: { dotnet-version: "${{ env.DOTNET_VERSION }}" }
+      - run: python scripts/set_version.py "${{ needs.version.outputs.v }}"
+      - name: 서버 주소 넣기
+        env: { AHNA_SERVER: "${{ secrets.AHNA_SERVER }}" }
+        run: python scripts/set_server.py
+      - name: 빌드 (x64, 런타임 포함)
+        shell: pwsh
+        run: |
+          $v = "${{ needs.version.outputs.v }}"
+          $pkg = "out/Ahna-$v-Windows"
+          dotnet publish windows/Ahna.csproj -c Release -r win-x64 --self-contained true -o "$pkg/app" 2>&1 | Tee-Object -FilePath "$env:RUNNER_TEMP\win-build.log"
+          if ($LASTEXITCODE -ne 0) {
+            Select-String -Path "$env:RUNNER_TEMP\win-build.log" -Pattern "error " | Select-Object -ExpandProperty Line -Unique | Select-Object -First 30 | ForEach-Object { "::error::$_" }
+            throw "publish 실패"
+          }
+          Copy-Item windows/package/* $pkg -Recurse -Force
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Compress-Archive -Path $pkg -DestinationPath "dist/Ahna-Windows.zip"
+      - name: 설치 파일 하나 (Inno Setup)
+        shell: pwsh
+        run: |
+          $v = "${{ needs.version.outputs.v }}"
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress | Out-Null }
+          $app = (Resolve-Path "out/Ahna-$v-Windows/app").Path
+          & $iscc /Qp "/DAppVersion=$v" "/DSourceDir=$app" "/O$PWD\dist" windows\installer\Ahna.iss
+          if ($LASTEXITCODE -ne 0) { throw "설치 파일 만들기 실패" }
+      - name: 자체 검사 (참고용)
+        continue-on-error: true
+        timeout-minutes: 5
+        shell: pwsh
+        run: |
+          $v = "${{ needs.version.outputs.v }}"
+          $p = Start-Process "out/Ahna-$v-Windows/app/Ahna.exe" -ArgumentList "--self-test", "$env:RUNNER_TEMP\selftest" -Wait -PassThru
+          "self-test exit: $($p.ExitCode)"
+      - name: 서버에 올리기 (정식 배포)
+        if: ${{ github.event.inputs.publish == 'true' }}
+        id: zip
+        env: { AHNA_PUBLISH_KEY: "${{ secrets.AHNA_PUBLISH_KEY }}" }
+        run: python scripts/upload.py dist/Ahna-Windows.zip "Ahna-windows-${{ needs.version.outputs.v }}.zip"
+      - name: 설치 파일 올리기 (정식 배포)
+        if: ${{ github.event.inputs.publish == 'true' }}
+        id: setup
+        env: { AHNA_PUBLISH_KEY: "${{ secrets.AHNA_PUBLISH_KEY }}" }
+        run: python scripts/upload.py dist/Ahna-Setup.exe "Ahna-Setup-${{ needs.version.outputs.v }}.exe"
+
+  ios:
+    needs: version
+    runs-on: macos-15
+    outputs:
+      asset: ${{ steps.up.outputs.asset }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: maxim-lobanov/setup-xcode@v1
+        with: { xcode-version: latest-stable }
+      - run: python3 scripts/set_version.py "${{ needs.version.outputs.v }}"
+      - name: 서버 주소 넣기
+        env: { AHNA_SERVER: "${{ secrets.AHNA_SERVER }}" }
+        run: python3 scripts/set_server.py
+      - name: 저장·연결 검사 (참고용, 실패해도 계속)
+        continue-on-error: true
+        working-directory: ios
+        run: |
+          set +e; st=0
+          for t in 자동저장검증 다중연결검증 휴대폰직접연결검증; do
+            bash "$t.command" > "$RUNNER_TEMP/$t.log" 2>&1; r=$?
+            if [ $r -ne 0 ]; then st=$r; echo "::warning::$t 실패 ($r)"; grep -aE "error|Fatal|FAIL|failed|Assertion|precondition" "$RUNNER_TEMP/$t.log" | sort -u | head -15 | sed "s/^/::warning::$t: /"; tail -25 "$RUNNER_TEMP/$t.log" | sed "s/^/::warning::$t 끝부분: /"; fi
+          done
+          exit $st
+      - name: 서명 전 IPA
+        working-directory: ios
+        env:
+          AHNA_SKIP_CHECKS: "1"
+        run: |
+          set +e
+          bash "Sideloadly용IPA만들기.command" 2>&1 | tee "$RUNNER_TEMP/ios-build.log"
+          st=${PIPESTATUS[0]}
+          grep -E "error:" "$RUNNER_TEMP/ios-build.log" | sort -u | head -30 | sed 's/^/::error::/'
+          exit $st
+      - run: |
+          mkdir -p dist
+          cp "ios/dist/Ahna-${{ needs.version.outputs.v }}-sideloadly.ipa" dist/Ahna-iOS.ipa
+      - name: 서버에 올리기 (정식 배포)
+        if: ${{ github.event.inputs.publish == 'true' }}
+        id: up
+        env: { AHNA_PUBLISH_KEY: "${{ secrets.AHNA_PUBLISH_KEY }}" }
+        run: python3 scripts/upload.py dist/Ahna-iOS.ipa "Ahna-ios-${{ needs.version.outputs.v }}.ipa"
+
+  mac:
+    needs: version
+    runs-on: macos-15
+    outputs:
+      asset: ${{ steps.up.outputs.asset }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: maxim-lobanov/setup-xcode@v1
+        with: { xcode-version: latest-stable }
+      - uses: actions/setup-dotnet@v4
+        with: { dotnet-version: "${{ env.DOTNET_VERSION }}" }
+      - run: python3 scripts/set_version.py "${{ needs.version.outputs.v }}"
+      - name: 서버 주소 넣기
+        env: { AHNA_SERVER: "${{ secrets.AHNA_SERVER }}" }
+        run: python3 scripts/set_server.py
+      - name: 수신 구성요소 (.NET, arm64 + x64)
+        run: |
+          set +e
+          for rid in osx-arm64 osx-x64; do
+            dotnet publish mac/Receiver/Ahna.MacReceiver.csproj -c Release -r $rid --self-contained true -o "mac/Backend/$rid" 2>&1 | tee -a "$RUNNER_TEMP/mac-dotnet.log"
+            st=${PIPESTATUS[0]}
+            if [ $st -ne 0 ]; then grep -E "error " "$RUNNER_TEMP/mac-dotnet.log" | sort -u | head -30 | sed 's/^/::error::/'; exit $st; fi
+            echo "${{ needs.version.outputs.v }}" > "mac/Backend/$rid/ahna-backend-version.txt"
+          done
+      - name: 앱 + 공유 확장
+        run: |
+          set +e
+          bash mac/build-mac.sh 2>&1 | tee "$RUNNER_TEMP/mac-build.log"
+          st=${PIPESTATUS[0]}
+          grep -E "error:" "$RUNNER_TEMP/mac-build.log" | sort -u | head -30 | sed 's/^/::error::/'
+          exit $st
+      - run: |
+          mkdir -p dist
+          ditto -c -k --keepParent "mac/dist/아나.app" dist/Ahna-Mac.zip
+      - name: 서버에 올리기 (정식 배포)
+        if: ${{ github.event.inputs.publish == 'true' }}
+        id: up
+        env: { AHNA_PUBLISH_KEY: "${{ secrets.AHNA_PUBLISH_KEY }}" }
+        run: python3 scripts/upload.py dist/Ahna-Mac.zip "Ahna-mac-${{ needs.version.outputs.v }}.zip"
+
+  android:
+    needs: version
+    runs-on: ubuntu-latest
+    outputs:
+      asset: ${{ steps.up.outputs.asset }}
+    env:
+      KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      AHNA_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "17" }
+      - run: python3 scripts/set_version.py "${{ needs.version.outputs.v }}"
+      - name: 서버 주소 넣기
+        env: { AHNA_SERVER: "${{ secrets.AHNA_SERVER }}" }
+        run: python3 scripts/set_server.py
+      - name: 서명 키 확인
+        run: |
+          if [ -n "$KEYSTORE" ]; then echo "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/ahna.keystore"; exit 0; fi
+          # 정식 배포는 반드시 저장소 비밀값의 키로 서명합니다(키가 바뀌면 설치된 앱이 업데이트를 받지 못함).
+          if [ "${{ github.event.inputs.publish }}" = "true" ]; then echo "::error::비밀값 ANDROID_KEYSTORE_BASE64 / ANDROID_KEY_PASSWORD가 없습니다."; exit 1; fi
+          echo "::warning::서명 키 비밀값이 없어 시험용 임시 키로 서명합니다(설치 확인용)."
+          echo "AHNA_KEY_PASSWORD=test-only-key" >> "$GITHUB_ENV"
+          keytool -genkeypair -keystore "$RUNNER_TEMP/ahna.keystore" -storetype PKCS12 -alias ahna -keyalg RSA -keysize 2048 -validity 30 -storepass test-only-key -keypass test-only-key -dname "CN=Ahna test" >/dev/null
+      - name: APK
+        run: |
+          set +e
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0" > /dev/null
+          python3 android/build_apk.py --jdk "$JAVA_HOME" --sdk "$ANDROID_HOME" --keystore "$RUNNER_TEMP/ahna.keystore" --alias ahna 2>&1 | tee "$RUNNER_TEMP/android.log"
+          st=${PIPESTATUS[0]}
+          grep -E "error:|Error:" "$RUNNER_TEMP/android.log" | sort -u | head -30 | sed 's/^/::error::/'
+          [ $st -eq 0 ] || exit $st
+          mkdir -p dist
+          cp "android/app/build/manual/Ahna-${{ needs.version.outputs.v }}-Android.apk" dist/Ahna-Android.apk
+      - name: 서버에 올리기 (정식 배포)
+        if: ${{ github.event.inputs.publish == 'true' }}
+        id: up
+        env: { AHNA_PUBLISH_KEY: "${{ secrets.AHNA_PUBLISH_KEY }}" }
+        run: python3 scripts/upload.py dist/Ahna-Android.apk "Ahna-android-${{ needs.version.outputs.v }}.apk"
+
+  publish:
+    needs: [version, server, windows, ios, mac, android]
+    if: ${{ github.event.inputs.publish == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 서버 주소 넣기
+        env: { AHNA_SERVER: "${{ secrets.AHNA_SERVER }}" }
+        run: python3 scripts/set_server.py
+      - name: latest.json 올리기 (앱들이 6시간마다 확인)
+        env:
+          AHNA_PUBLISH_KEY: ${{ secrets.AHNA_PUBLISH_KEY }}
+          WINDOWS: ${{ needs.windows.outputs.zip }}
+          WINDOWS_SETUP: ${{ needs.windows.outputs.setup }}
+          IOS: ${{ needs.ios.outputs.asset }}
+          MAC: ${{ needs.mac.outputs.asset }}
+          ANDROID: ${{ needs.android.outputs.asset }}
+        run: python3 scripts/make_manifest.py "${{ needs.version.outputs.v }}"

@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex">
+<meta name="color-scheme" content="light dark">
+<title>아나</title>
+<style>
+:root{--bg:#eef1f5;--surface:#fff;--subtle:#e9ebef;--border:#e3e6ea;--strong:#c5cad1;--text:#1f2328;--muted:#5b636e;--faint:#6b7280;--accent:#005fb8;--on:#fff;--soft:#e5eff9;--danger:#c4372f}
+@media (prefers-color-scheme:dark){:root{--bg:#1c1c1c;--surface:#272727;--subtle:#2e2e2e;--border:#3a3a3a;--strong:#555555;--text:#e8eaed;--muted:#a7aeb8;--faint:#9aa1ab;--accent:#4cc2ff;--on:#002033;--soft:#16303f;--danger:#f2786f}}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,'Noto Sans KR',system-ui,sans-serif;font-size:14px;line-height:1.5;-webkit-text-size-adjust:100%}
+main{max-width:480px;min-height:100vh;margin:0 auto;display:flex;flex-direction:column;gap:16px;padding:32px 24px 24px}
+.top{display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center}
+.logo{display:grid;place-items:center;width:56px;height:56px;border-radius:16px;background:var(--accent);color:var(--on)}
+h1{margin:0;font-size:22px;font-weight:700;word-break:keep-all}
+.sub{margin:6px 0 0;font-size:13px;color:var(--muted)}
+.list{display:flex;flex-direction:column;padding:6px 14px;border-radius:16px;background:var(--surface);border:1px solid var(--border)}
+.row{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);min-width:0}
+.row:last-child{border-bottom:0}
+.thumb{flex:none;width:44px;height:44px;border-radius:9px;background:var(--subtle);display:grid;place-items:center;color:var(--muted);overflow:hidden}
+.thumb img{width:100%;height:100%;object-fit:cover}
+.meta{flex:1;min-width:0}.meta b{display:block;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.meta span{display:block;font-size:12px;color:var(--faint)}
+.x{flex:none;display:grid;place-items:center;width:40px;height:40px;border:0;background:transparent;color:var(--muted);font:inherit;font-size:18px}
+.btn{display:grid;place-items:center;width:100%;height:54px;border:0;border-radius:14px;background:var(--accent);color:var(--on);font:inherit;font-size:16px;font-weight:700;text-decoration:none;cursor:pointer}
+.btn[disabled]{opacity:.45}
+.btn.plain{height:48px;background:var(--subtle);color:var(--text);font-size:14px;font-weight:500}
+.pick{display:flex;flex-direction:column;align-items:center;gap:6px;padding:26px 12px;border:1.5px dashed var(--strong);border-radius:16px;background:var(--surface);text-align:center;cursor:pointer}
+.pick .ic{display:grid;place-items:center;width:46px;height:46px;border-radius:50%;background:var(--soft);color:var(--accent)}
+.pick small{font-size:12px;color:var(--faint)}
+label.l{font-size:12px;color:var(--muted)}
+input.t{height:46px;padding:0 14px;border:1px solid var(--border);border-radius:12px;background:var(--surface);color:var(--text);font:inherit;font-size:16px;width:100%}
+.center{display:flex;flex-direction:column;align-items:center;gap:8px;padding:20px 0;text-align:center}
+.ok{display:grid;place-items:center;width:52px;height:52px;border-radius:50%;background:var(--soft);color:var(--accent)}
+.no{display:grid;place-items:center;width:52px;height:52px;border-radius:50%;background:var(--subtle);color:var(--muted)}
+.dots{display:flex;gap:6px}.dots i{width:10px;height:10px;border-radius:50%;background:var(--accent);animation:p 1.2s infinite}.dots i:nth-child(2){animation-delay:.2s}.dots i:nth-child(3){animation-delay:.4s}
+@keyframes p{0%,100%{opacity:.3}50%{opacity:1}}
+.prog{display:flex;flex-direction:column;gap:8px}.prog .h{display:flex;justify-content:space-between;gap:8px;font-size:13px;color:var(--muted)}.prog .h span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.prog .h b{color:var(--accent)}
+.bar{height:8px;border-radius:4px;background:var(--subtle)}.bar i{display:block;height:8px;border-radius:4px;background:var(--accent);width:0}
+.hint{margin:0;font-size:12px;color:var(--faint);text-align:center}
+.code{font-size:13px;color:var(--muted)}.code b{font-size:20px;color:var(--text);letter-spacing:2px;font-variant-numeric:tabular-nums}
+.err{margin:0;font-size:13px;color:var(--danger);text-align:center}
+footer{margin-top:auto;font-size:12px;color:var(--faint);text-align:center}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<main>
+  <div class="top">
+    <span class="logo"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2 11 13"></path><path d="M22 2 15 22l-4-9-9-4 20-7z"></path></svg></span>
+    <div><h1 id="title">아나</h1><p class="sub" id="subtitle">불러오는 중…</p></div>
+  </div>
+
+  <section id="receive" hidden>
+    <div class="list" id="files"></div>
+    <div id="rBefore" style="display:flex;flex-direction:column;gap:12px;margin-top:16px">
+      <button type="button" class="btn" id="getAll">모두 받기</button>
+      <p class="hint">사진은 받은 뒤 '사진에 저장'을 누르면 앨범에 들어갑니다</p>
+    </div>
+    <div id="rLoading" class="prog" style="margin-top:16px" hidden>
+      <div class="h"><span id="rName">받는 중</span><b id="rPct">0%</b></div>
+      <div class="bar" aria-hidden="true"><i id="rBar"></i></div>
+    </div>
+    <div id="rDone" class="center" hidden>
+      <span class="ok"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg></span>
+      <strong style="font-size:17px">모두 받았습니다</strong>
+      <span style="font-size:12px;color:var(--faint)">이 링크는 이제 사용할 수 없습니다</span>
+      <button type="button" class="btn plain" id="toPhotos" style="margin-top:8px" hidden>사진에 저장</button>
+    </div>
+  </section>
+
+  <section id="upload" hidden style="display:flex;flex-direction:column;gap:12px">
+    <div id="uPick" style="display:flex;flex-direction:column;gap:12px">
+      <label class="pick" for="chooser">
+        <span class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"></path></svg></span>
+        <span style="font-weight:700">사진 · 파일 고르기</span>
+        <small>여러 개를 한 번에 고를 수 있습니다 · 파일당 최대 4 GB</small>
+      </label>
+      <input type="file" id="chooser" multiple hidden>
+      <div class="list" id="picked" hidden></div>
+      <label class="l" for="senderName">보내는 사람 이름 (상대 화면에 표시)</label>
+      <input class="t" id="senderName" maxlength="40" autocomplete="nickname" placeholder="예: 민수">
+      <button type="button" class="btn" id="sendBtn" disabled>보내기</button>
+    </div>
+    <div id="uWaiting" class="center" hidden>
+      <span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>
+      <strong style="font-size:17px">상대가 받기를 누르면 전송됩니다</strong>
+      <span style="font-size:13px;color:var(--muted)">이 화면을 닫지 마세요</span>
+      <span class="code" id="uCode" hidden>상대 화면의 확인 숫자 <b id="uCodeNum"></b></span>
+    </div>
+    <div id="uSending" class="prog" hidden>
+      <div class="h"><span id="uName">보내는 중</span><b id="uPct">0%</b></div>
+      <div class="bar" aria-hidden="true"><i id="uBar"></i></div>
+    </div>
+    <div id="uDone" class="center" hidden>
+      <span class="ok"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg></span>
+      <strong style="font-size:17px">보냈습니다</strong>
+      <span style="font-size:12px;color:var(--faint)">이 링크는 이제 사용할 수 없습니다</span>
+    </div>
+    <div id="uDeclined" class="center" hidden>
+      <span class="no"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg></span>
+      <strong style="font-size:17px">상대가 받지 않았습니다</strong>
+      <span style="font-size:12px;color:var(--faint)">거절했거나 응답이 없었습니다</span>
+    </div>
+  </section>
+
+  <section id="goneBox" class="center" hidden>
+    <span class="no"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg></span>
+    <strong style="font-size:17px">이 링크는 사용할 수 없습니다</strong>
+    <span style="font-size:12px;color:var(--faint)">이미 끝났거나 시간이 지나 사라졌습니다. 보낸 사람의 아나가 열려 있어야 합니다.</span>
+  </section>
+
+  <p class="err" id="error" hidden></p>
+  <footer id="footer">아나</footer>
+</main>
+<script>
+(function () {
+  'use strict';
+  var P = location.pathname.replace(/\/+$/, '');
+  var $ = function (id) { return document.getElementById(id); };
+  var info = null, left = 0, ended = false, chosen = [], blobs = [];
+  var MAX = 4 * 1024 * 1024 * 1024, MEMORY = 300 * 1024 * 1024;
+
+  function show(id, on) { $(id).hidden = !on; }
+  function size(b) {
+    if (b < 1024) return b + ' B';
+    var u = ['KB', 'MB', 'GB'], v = b, i = -1;
+    do { v /= 1024; i++; } while (v >= 1024 && i < u.length - 1);
+    return (v >= 100 ? Math.round(v) : v.toFixed(1)) + ' ' + u[i];
+  }
+  function clock(s) { s = Math.max(0, s | 0); var m = Math.floor(s / 60), r = s % 60; return m + ':' + (r < 10 ? '0' : '') + r; }
+  function error(text) { $('error').textContent = text || ''; show('error', !!text); }
+  function isImage(name) { return /\.(jpe?g|png|gif|heic|heif|webp)$/i.test(name); }
+  function getJSON(path) {
+    return fetch(P + path, { cache: 'no-store', credentials: 'omit' }).then(function (r) {
+      if (!r.ok) { var e = new Error('HTTP ' + r.status); e.status = r.status; throw e; }
+      return r.json();
+    });
+  }
+  function postJSON(path, body) {
+    return fetch(P + path, { method: 'POST', cache: 'no-store', credentials: 'omit', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(function (r) {
+      if (!r.ok) { var e = new Error('HTTP ' + r.status); e.status = r.status; throw e; }
+      return r.json();
+    });
+  }
+  function gone() {
+    ended = true; show('receive', false); show('upload', false); show('goneBox', true); error('');
+    $('title').textContent = '아나'; $('subtitle').textContent = '링크가 끝났습니다';
+    $('footer').textContent = '아나';
+  }
+  function row(parent, name, bytes, preview, removable, onRemove) {
+    var r = document.createElement('div'); r.className = 'row';
+    var t = document.createElement('span'); t.className = 'thumb';
+    if (preview) { var img = document.createElement('img'); img.alt = ''; img.src = preview; t.appendChild(img); }
+    else { t.textContent = isImage(name) ? '▣' : '▤'; }
+    var m = document.createElement('span'); m.className = 'meta';
+    var b = document.createElement('b'); b.textContent = name;
+    var s = document.createElement('span'); s.textContent = size(bytes);
+    m.appendChild(b); m.appendChild(s); r.appendChild(t); r.appendChild(m);
+    if (removable) {
+      var x = document.createElement('button'); x.type = 'button'; x.className = 'x'; x.setAttribute('aria-label', name + ' 빼기'); x.textContent = '✕';
+      x.addEventListener('click', onRemove); r.appendChild(x);
+    }
+    parent.appendChild(r);
+  }
+  function tick() {
+    if (ended) return;
+    left -= 1;
+    $('footer').textContent = clock(left) + ' 뒤 링크가 사라집니다 · 아나';
+    if (left <= 0) { gone(); return; }
+    setTimeout(tick, 1000);
+  }
+
+  // ---------- 받기 (kind=send) ----------
+  function setupReceive() {
+    var total = 0;
+    info.files.forEach(function (f) { total += f.bytes; row($('files'), f.name, f.bytes, null, false); });
+    $('title').innerHTML = '';
+    $('title').appendChild(document.createTextNode(info.owner + '님이'));
+    $('title').appendChild(document.createElement('br'));
+    $('title').appendChild(document.createTextNode('파일을 보냈습니다'));
+    $('subtitle').textContent = '아나로 보낸 파일 · 앱 없이 받을 수 있습니다';
+    $('getAll').textContent = '모두 받기 · ' + size(total);
+    show('receive', true);
+    $('getAll').addEventListener('click', function () { receiveAll(total); });
+    $('toPhotos').addEventListener('click', function () {
+      var files = blobs.filter(function (f) { return isImage(f.name); });
+      if (files.length && navigator.share) navigator.share({ files: files }).catch(function () {});
+    });
+  }
+  function save(blob, name) {
+    var url = URL.createObjectURL(blob), a = document.createElement('a');
+    a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
+  }
+  function direct(i, name) {
+    var a = document.createElement('a'); a.href = P + '/file/' + i; a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+  }
+  function fetchFile(f, done, onProgress) {
+    return fetch(P + '/file/' + f.i, { cache: 'no-store', credentials: 'omit' }).then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      if (!r.body || !r.body.getReader) return r.blob();
+      var reader = r.body.getReader(), parts = [], got = 0;
+      function pump() {
+        return reader.read().then(function (x) {
+          if (x.done) return new Blob(parts);
+          parts.push(x.value); got += x.value.length; onProgress(done + got);
+          return pump();
+        });
+      }
+      return pump();
+    });
+  }
+  function receiveAll(total) {
+    show('rBefore', false); show('rLoading', true); error('');
+    var done = 0, list = info.files.slice(), useMemory = total <= MEMORY;
+    function progress(n, name) {
+      var pct = total ? Math.min(100, Math.floor(n * 100 / total)) : 100;
+      $('rName').textContent = '받는 중 · ' + name; $('rPct').textContent = pct + '%'; $('rBar').style.width = pct + '%';
+    }
+    function next() {
+      if (!list.length) {
+        show('rLoading', false); show('rDone', true);
+        var canShare = false;
+        try { canShare = blobs.some(function (f) { return isImage(f.name); }) && navigator.canShare && navigator.canShare({ files: blobs.filter(function (f) { return isImage(f.name); }) }); } catch (e) { canShare = false; }
+        show('toPhotos', !!canShare);
+        ended = true; $('footer').textContent = '아나';
+        return;
+      }
+      var f = list.shift();
+      progress(done, f.name);
+      if (!useMemory) {
+        direct(f.i, f.name); done += f.bytes; progress(done, f.name);
+        setTimeout(next, 1500); return;
+      }
+      fetchFile(f, done, function (n) { progress(n, f.name); }).then(function (blob) {
+        done += f.bytes;
+        try { blobs.push(new File([blob], f.name, { type: blob.type || '' })); } catch (e) {}
+        save(blob, f.name); setTimeout(next, 400);
+      }).catch(function () {
+        show('rLoading', false); show('rBefore', true);
+        error('받지 못했습니다. 보낸 사람의 아나가 열려 있는지 확인하고 다시 누르세요.');
+      });
+    }
+    next();
+  }
+
+  // ---------- 올리기 (kind=receive) ----------
+  function clean(name) {
+    var n = String(name || '파일').replace(/[\\\/:*?"<>|\u0000-\u001f\u007f]/g, '_').replace(/[. ]+$/, '');
+    if (!n || n === '.' || n === '..') n = '파일';
+    if (n.length > 200) { var dot = n.lastIndexOf('.'); n = dot > 0 && n.length - dot < 12 ? n.slice(0, 190) + n.slice(dot) : n.slice(0, 200); }
+    return n.normalize ? n.normalize('NFC') : n;
+  }
+  function renderPicked() {
+    var box = $('picked'); box.innerHTML = '';
+    chosen.forEach(function (c, idx) {
+      row(box, c.name, c.file.size, c.preview, true, function () {
+        if (c.preview) URL.revokeObjectURL(c.preview);
+        chosen.splice(idx, 1); renderPicked();
+      });
+    });
+    show('picked', chosen.length > 0);
+    $('sendBtn').disabled = chosen.length === 0;
+    $('sendBtn').textContent = chosen.length ? '보내기 · ' + chosen.length + '개' : '보내기';
+  }
+  function setupUpload() {
+    $('title').textContent = info.owner + '에게 보내기';
+    $('subtitle').textContent = '앱 없이 보낼 수 있습니다';
+    try { $('senderName').value = localStorage.getItem('ahnaGuestName') || ''; } catch (e) {}
+    show('upload', true);
+    $('chooser').addEventListener('change', function () {
+      var files = Array.prototype.slice.call($('chooser').files || []);
+      error('');
+      files.forEach(function (f) {
+        if (f.size > MAX) { error(f.name + ' · 파일당 최대 4 GB까지 보낼 수 있습니다.'); return; }
+        if (chosen.length >= 200) return;
+        var preview = null;
+        if (/^image\/(jpeg|png|gif|webp)$/.test(f.type)) { try { preview = URL.createObjectURL(f); } catch (e) {} }
+        chosen.push({ file: f, name: clean(f.name), preview: preview });
+      });
+      $('chooser').value = '';
+      renderPicked();
+    });
+    $('sendBtn').addEventListener('click', request);
+  }
+  function request() {
+    if (!chosen.length) return;
+    var name = $('senderName').value.trim().slice(0, 40) || '웹 브라우저';
+    try { localStorage.setItem('ahnaGuestName', name); } catch (e) {}
+    $('sendBtn').disabled = true; error('');
+    postJSON('/request', { name: name, files: chosen.map(function (c) { return { name: c.name, bytes: c.file.size }; }) }).then(function (r) {
+      show('uPick', false); show('uWaiting', true);
+      if (r.code) { $('uCodeNum').textContent = r.code; show('uCode', true); }
+      poll();
+    }).catch(function (e) {
+      $('sendBtn').disabled = false;
+      if (e.status === 404) gone(); else error('요청하지 못했습니다. 잠시 뒤 다시 누르세요.');
+    });
+  }
+  function poll() {
+    if (ended) return;
+    getJSON('/status').then(function (s) {
+      if (s.state === 'accepted') { upload(); return; }
+      if (s.state === 'declined' || s.state === 'expired') { show('uWaiting', false); show('uDeclined', true); ended = true; $('footer').textContent = '아나'; return; }
+      setTimeout(poll, 1500);
+    }).catch(function (e) { if (e.status === 404) gone(); else setTimeout(poll, 3000); });
+  }
+  function upload() {
+    show('uWaiting', false); show('uSending', true);
+    var total = 0, done = 0, index = 0;
+    chosen.forEach(function (c) { total += c.file.size; });
+    function progress(n, name) {
+      var pct = total ? Math.min(100, Math.floor(n * 100 / total)) : 100;
+      $('uName').textContent = '보내는 중 · ' + name; $('uPct').textContent = pct + '%'; $('uBar').style.width = pct + '%';
+    }
+    function next() {
+      if (index >= chosen.length) { show('uSending', false); show('uDone', true); ended = true; $('footer').textContent = '아나'; return; }
+      var c = chosen[index], i = index;
+      progress(done, c.name);
+      var x = new XMLHttpRequest();
+      x.open('POST', P + '/upload?i=' + i + '&name=' + encodeURIComponent(c.name));
+      x.upload.onprogress = function (e) { if (e.lengthComputable) progress(done + e.loaded, c.name); };
+      x.onload = function () {
+        if (x.status >= 200 && x.status < 300) { done += c.file.size; index += 1; next(); }
+        else { show('uSending', false); error('보내지 못했습니다 (' + x.status + '). 상대의 아나가 열려 있는지 확인하세요.'); }
+      };
+      x.onerror = function () { show('uSending', false); error('연결이 끊겼습니다. 상대의 아나가 열려 있는지 확인하세요.'); };
+      x.send(c.file);
+    }
+    next();
+  }
+
+  getJSON('/info').then(function (i) {
+    info = i;
+    if (!info || ['done', 'declined', 'expired'].indexOf(info.state) >= 0) { gone(); return; }
+    left = info.expiresIn | 0;
+    $('footer').textContent = clock(left) + ' 뒤 링크가 사라집니다 · 아나';
+    if (info.kind === 'send') setupReceive(); else setupUpload();
+    setTimeout(tick, 1000);
+  }).catch(gone);
+})();
+</script>
+</body>
+</html>
