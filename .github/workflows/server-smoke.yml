@@ -17,7 +17,7 @@ jobs:
       AHNA_ADMIN_PASSWORD: admin-pass-1
       AHNA_ORIGIN: http://localhost:8080
       AHNA_TEST_HTTP: "1"
-      AHNA_DATA: ${{ runner.temp }}/ahna-data
+      AHNA_DATA: /tmp/ahna-data
       ASPNETCORE_URLS: http://localhost:8080
     steps:
       - uses: actions/checkout@v4
