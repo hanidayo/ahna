@@ -1,0 +1,36 @@
+# 서버(중계) 동작 확인: 초대 코드 연결 · 관리자 페이지 · 알림 · 사용량 한도 · 초기화 · 차단
+name: server-smoke
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [server/**, scripts/server_smoke.py, .github/workflows/server-smoke.yml]
+permissions:
+  contents: read
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      AHNA_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      AHNA_INVITE: TEST-INVITE
+      AHNA_ADMIN_PASSWORD: admin-pass-1
+      AHNA_ORIGIN: http://localhost:8080
+      AHNA_TEST_HTTP: "1"
+      AHNA_DATA: ${{ runner.temp }}/ahna-data
+      ASPNETCORE_URLS: http://localhost:8080
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - run: pip install websockets requests
+      - name: 서버 실행
+        run: |
+          dotnet build server/Server -c Release -o "$RUNNER_TEMP/relay" -v q
+          nohup dotnet "$RUNNER_TEMP/relay/Ahna.Relay.dll" > "$RUNNER_TEMP/relay.log" 2>&1 &
+      - name: 확인
+        run: python3 scripts/server_smoke.py
+      - name: 서버 기록
+        if: always()
+        run: cat "$RUNNER_TEMP/relay.log" || true
