@@ -30,7 +30,7 @@ jobs:
           dotnet build server/Server -c Release -o "$RUNNER_TEMP/relay" -v q
           nohup dotnet "$RUNNER_TEMP/relay/Ahna.Relay.dll" > "$RUNNER_TEMP/relay.log" 2>&1 &
       - name: 확인
-        run: python3 scripts/server_smoke.py
+        run: python3 scripts/server_smoke.py 2>&1 | tee "$RUNNER_TEMP/smoke.log"; code=${PIPESTATUS[0]}; [ $code -eq 0 ] || { tail -5 "$RUNNER_TEMP/smoke.log" | sed 's/^/::error::/'; exit $code; }
       - name: 서버 기록
         if: always()
-        run: cat "$RUNNER_TEMP/relay.log" || true
+        run: cat "$RUNNER_TEMP/relay.log" || true; grep -iE "exception|error" "$RUNNER_TEMP/relay.log" | head -5 | sed 's/^/::warning::/' || true

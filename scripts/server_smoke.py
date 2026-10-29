@@ -18,7 +18,7 @@ ok = 0
 
 def check(cond, what):
     global ok
-    if not cond: sys.exit("실패: " + what)
+    if not cond: print("::error::실패: " + what, flush=True); sys.exit(1)
     ok += 1; print("통과:", what)
 
 def join(cid, name="테스트 PC"):
