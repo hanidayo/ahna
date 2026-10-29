@@ -34,6 +34,12 @@ async def control(token, cid, notices=True):
     if notices: headers["X-Ahna-Features"] = "notice,notices"
     ws = await websockets.connect(WS + "/_bridge/control", additional_headers=headers)
     await ws.send(json.dumps({"type": "ping"}))
+    # 서버는 45초 동안 ping이 없으면 끊습니다(앱은 15초마다 보냄).
+    async def keep():
+        try:
+            while True: await asyncio.sleep(10); await ws.send(json.dumps({"type": "ping"}))
+        except Exception: pass
+    asyncio.get_running_loop().create_task(keep())
     return ws
 
 async def notice(ws, timeout=10):
