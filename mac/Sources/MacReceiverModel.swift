@@ -272,7 +272,7 @@ struct MacReceiverDevice: Identifiable, Equatable {
                 alert.alertStyle = informational ? .informational : .warning
                 NSApp.activate(ignoringOtherApps: true); alert.runModal()
             }
-        case "clipboardReceived": message =(object["sender"] as? String ?? "기기") + "에서 글자가 도착했습니다. 클립보드의 받은 글자에서 복사하세요."
+        case "clipboardReceived": message = (object["sender"] as? String ?? "기기") + "에서 글자가 도착했습니다. 클립보드의 받은 글자에서 복사하세요."
         case "reverseOffer":
             guard let requestID = object["requestID"] as? String else { break }
             if let offer = object["offer"] as? [String: Any], let data = try? JSONSerialization.data(withJSONObject: offer), let text = String(data: data, encoding: .utf8) {
