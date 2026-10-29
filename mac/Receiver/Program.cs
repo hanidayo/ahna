@@ -28,6 +28,8 @@ try
     // 공유 메뉴(근처 기기로 보내기)가 쓰도록 연결 토큰을 Swift 앱에 알립니다(이 프로세스와 앱 사이의 파이프로만).
     string? MemberToken(){try{var key=string.IsNullOrEmpty(server.Settings.RemoteKeyProtected)?"":RemoteKey.Unprotect(server.Settings.RemoteKeyProtected);return Brand.IsMemberToken(key)?key:null;}catch{return null;}}
     server.ClipboardReceived+=sender=>{_ = Emit(new{type="clipboardReceived",sender});_ = Status();};
+    // 서버 관리자 알림(사용량 한도·메시지·초기화·차단). 초기화·차단이면 연결 정보가 지워져 초대 코드 화면이 나옵니다.
+    server.ServerNotice+=(action,text)=>{_ = Emit(new{type="notice",action,text});_ = Status();};
     // 근처 기기 · QR 공유: 1회용 게스트 티켓 상태를 Swift 앱에 알립니다.
     object Snap(TransferServer.GuestTicket t)=>new{token=t.Token,kind=t.Kind,state=t.State,code=t.Code,expires=t.Expires.ToUnixTimeSeconds(),files=t.Files.Select(f=>new{name=f.Name,bytes=f.Bytes}),completed=t.CompletedCount,peer=t.Peer,transferred=t.Transferred,total=t.Total};
     server.GuestChanged+=t=>{_ = Emit(new{type="guest",ticket=Snap(t)});};

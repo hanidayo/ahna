@@ -53,6 +53,14 @@ public sealed class RemoteBridge : IAsyncDisposable
 
 	public string? LastError { get; private set; }
 
+	/// 서버 관리자 화면에 보일 이 기기 이름과 종류
+	public Func<string>? DeviceName { get; set; }
+
+	public string Platform { get; set; } = "";
+
+	/// 서버가 보낸 알림(action: limit·message·rejoin·blocked, text)
+	public event Action<string, string>? Notice;
+
 	public RemoteBridge(Uri local, string cache, Func<BridgeConfig?> configuration, bool testHttp = false, string? computerId = null, Func<string>? pairingPin = null)
 	{
 		if (!local.IsLoopback || local.Scheme != "http")
@@ -177,6 +185,15 @@ public sealed class RemoteBridge : IAsyncDisposable
 				control.Options.SetRequestHeader("Authorization", "Bearer " + key);
 				control.Options.KeepAliveInterval = TimeSpan.FromSeconds(15L);
 				control.Options.SetRequestHeader("X-Ahna-Computer", computerId);
+				control.Options.SetRequestHeader("X-Ahna-Features", "notice");
+				if (DeviceName != null)
+				{
+					control.Options.SetRequestHeader("X-Ahna-Name", Uri.EscapeDataString(DeviceName()));
+				}
+				if (Platform.Length > 0)
+				{
+					control.Options.SetRequestHeader("X-Ahna-Platform", Platform);
+				}
 				if (pairingPin != null)
 				{
 					control.Options.SetRequestHeader("X-Ahna-Pin-Hash", Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(pairingPin()))));
@@ -208,7 +225,19 @@ public sealed class RemoteBridge : IAsyncDisposable
 				{
 					while (!linked.IsCancellationRequested)
 					{
-						string valueOrDefault = (await Wire.ReadJson<Dictionary<string, string>>(control, linked.Token)).GetValueOrDefault("id");
+						Dictionary<string, string> message = await Wire.ReadJson<Dictionary<string, string>>(control, linked.Token);
+						if (message.GetValueOrDefault("type") == "notice")
+						{
+							try
+							{
+								Notice?.Invoke(message.GetValueOrDefault("action") ?? "", message.GetValueOrDefault("text") ?? "");
+							}
+							catch
+							{
+							}
+							continue;
+						}
+						string valueOrDefault = message.GetValueOrDefault("id");
 						if (!Guid.TryParseExact(valueOrDefault, "N", out var _) || jobs.Count >= 24)
 						{
 							throw new IOException("Invalid relay request");

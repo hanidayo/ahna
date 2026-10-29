@@ -322,6 +322,14 @@ internal sealed class TrayContext : ApplicationContext
 		{
 			Notify("아나 · 클립보드 수신", sender + "에서 글자가 도착했습니다. 알림을 눌러 확인하고 복사하세요.", recipientSaved: false, clipboard: true);
 		};
+		// 서버 관리자 알림: 사용량 한도, 관리자 메시지, 초기화(초대 코드 다시 입력), 차단
+		server.ServerNotice += (string action, string text) =>
+		{
+			trayContext.dispatcher.BeginInvoke(() =>
+			{
+				trayContext.ShowTip("아나 · 서버 알림", text, (action == "blocked" || action == "limit") ? ToolTipIcon.Warning : ToolTipIcon.Info);
+			});
+		};
 		server.ClipboardRequested = () =>
 		{
 			trayContext.dispatcher.BeginInvoke(() =>

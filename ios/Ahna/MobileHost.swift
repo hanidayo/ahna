@@ -690,7 +690,7 @@ private final class MobileHTTPRequest {
         joining = true; defer { joining = false }
         var request = URLRequest(url: url); request.httpMethod = "POST"; request.timeoutInterval = 20
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try? JSONSerialization.data(withJSONObject: ["invite": code, "computer": engine.identity])
+        request.httpBody = try? JSONSerialization.data(withJSONObject: ["invite": code, "computer": engine.identity, "name": engine.name, "platform": UIDevice.current.userInterfaceIdiom == .pad ? "iPad" : "iPhone"])
         do {
             let (data, response) = try await URLSession(configuration: .ephemeral).data(for: request)
             let status = (response as? HTTPURLResponse)?.statusCode ?? 0
@@ -714,8 +714,21 @@ private final class MobileHTTPRequest {
         do { let key = String(data: try MobileHTTPHost.secret("nas-key") ?? Data(), encoding: .utf8) ?? ""
             // 공유 메뉴가 근처 기기로 보낼 때 쓰도록 가입 토큰을 공통 설정에도 둡니다.
             if Brand.isMemberToken(key) { try? ComputerVault.saveMemberToken(key) }
-            relay = try MobileNASBridge(host: engine, address: nasAddress, key: key) { [weak self] value in Task { @MainActor in self?.remoteStatus = value } }; relay?.start()
+            relay = try MobileNASBridge(host: engine, address: nasAddress, key: key) { [weak self] value in Task { @MainActor in self?.remoteStatus = value } }
+            relay?.platform = UIDevice.current.userInterfaceIdiom == .pad ? "iPad" : "iPhone"
+            relay?.notice = { [weak self] action, text in Task { @MainActor in self?.serverNotice(action, text) } }
+            relay?.start()
         } catch { remoteStatus = error.localizedDescription }
+    }
+    /// 서버 관리자 알림. 초기화·차단이면 연결 키를 지우고 초대 코드 화면을 띄웁니다.
+    @Published var noticeText: String?
+    func serverNotice(_ action: String, _ text: String) {
+        noticeText = text
+        if action == "rejoin" || action == "blocked" {
+            relay?.stop(); relay = nil
+            _ = try? MobileHTTPHost.secret("nas-key", value: Data()); UserDefaults.standard.set(false, forKey: "mobileNasEnabled")
+            remoteStatus = text; needsJoin = true
+        }
     }
     func disableNAS() { UserDefaults.standard.set(false, forKey: "mobileNasEnabled"); relay?.stop(); relay = nil; remoteStatus = "서버 설정이 필요합니다." }
     func revoke() { relay?.stop(); relay = nil; engine?.revoke { [weak self] in Task { @MainActor in if UserDefaults.standard.bool(forKey: "mobileNasEnabled") { self?.connectNAS() } } } }

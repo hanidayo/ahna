@@ -832,7 +832,7 @@ public class MainActivity extends Activity {
         java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(Brand.SERVER + "/_ahna/join").openConnection();
         c.setConnectTimeout(15000); c.setReadTimeout(20000); c.setRequestMethod("POST"); c.setDoOutput(true);
         c.setRequestProperty("Content-Type", "application/json");
-        byte[] body = new org.json.JSONObject().put("invite", invite.trim()).put("computer", identity()).toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        byte[] body = new org.json.JSONObject().put("invite", invite.trim()).put("computer", identity()).put("name", deviceName()).put("platform", "Android").toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
         c.setFixedLengthStreamingMode(body.length);
         try (java.io.OutputStream o = c.getOutputStream()) { o.write(body); }
         int code = c.getResponseCode();
@@ -1467,6 +1467,20 @@ public class MainActivity extends Activity {
         if (relay != null) relay.close();
         setRelayText(null);
         relay = new RelayBridge(server, nasAddress(), keyFromSaved(), this::setRelayText);
+        relay.notice = (action, text) -> runOnUiThread(() -> serverNotice(action, text));
+    }
+    /** 서버 관리자 알림. 초기화·차단이면 연결 키를 지우고 초대 코드 입력 창을 띄웁니다. */
+    void serverNotice(String action, String text) {
+        boolean rejoin = "rejoin".equals(action) || "blocked".equals(action);
+        if (rejoin) {
+            if (relay != null) { relay.close(); relay = null; }
+            prefs.edit().remove("nasKey").commit();
+            setRelayText(text);
+        }
+        try {
+            new android.app.AlertDialog.Builder(this).setTitle("아나 · 서버 알림").setMessage(text)
+                .setPositiveButton(rejoin ? "초대 코드 입력" : "확인", (d, w) -> { if (rejoin) editNas(); }).show();
+        } catch (Exception ignored) { status(text); }
     }
     void saveClients() throws Exception { JSONArray a = new JSONArray(); for (Client c : clients) a.put(c.profile); prefs.edit().putString("connections", encrypt(a.toString())).commit(); }
 

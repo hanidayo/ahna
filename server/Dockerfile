@@ -16,7 +16,8 @@ WORKDIR /app
 COPY --from=build /out/ ./
 ENV ASPNETCORE_HTTP_PORTS=8080 DOTNET_EnableDiagnostics=0
 # 앱 업데이트 파일 보관(이름 있는 볼륨이 이 소유자를 그대로 이어받습니다)
-RUN mkdir -p /data && chown $APP_UID /data
+# 하루 사용량은 TZ(기본 Asia/Seoul) 0시에 바뀝니다.
+RUN apk add --no-cache tzdata && mkdir -p /data && chown $APP_UID /data
 VOLUME /data
 USER $APP_UID
 EXPOSE 8080

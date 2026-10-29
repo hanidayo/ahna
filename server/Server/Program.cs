@@ -29,7 +29,17 @@ if(invite.Length is >0 and <6)throw new InvalidOperationException("AHNA_INVITE m
 var inviteHash=SHA256.HashData(Encoding.UTF8.GetBytes(invite.ToUpperInvariant()));
 var revoked=new HashSet<string>((Environment.GetEnvironmentVariable("AHNA_REVOKED")??"").Split(',',StringSplitOptions.RemoveEmptyEntries|StringSplitOptions.TrimEntries),StringComparer.OrdinalIgnoreCase);
 var joinGate=new object();var joinAttempts=new Dictionary<string,(int Count,DateTimeOffset Since)>();
-string DeviceToken(string computer)=>Convert.ToHexString(HMACSHA256.HashData(Encoding.UTF8.GetBytes(key),Encoding.UTF8.GetBytes("ahna:"+computer))).ToLowerInvariant();
+var dataRoot=Environment.GetEnvironmentVariable("AHNA_DATA")??"/data";
+// 관리자 페이지: 서버에 연결한 기기 목록·사용량·차단·초기화 (/data/admin.json)
+var registry=new AdminStore(Path.Combine(dataRoot,"admin.json"));
+// 기기를 초기화하거나 전체 초기화하면 세대 번호가 바뀌어 예전 토큰이 더 이상 맞지 않습니다(둘 다 0이면 처음 형식 그대로).
+string DeviceToken(string computer){var (gen,epoch)=registry.Generation(computer);var suffix=gen==0&&epoch==0?"":$":{epoch}:{gen}";return Convert.ToHexString(HMACSHA256.HashData(Encoding.UTF8.GetBytes(key),Encoding.UTF8.GetBytes("ahna:"+computer+suffix))).ToLowerInvariant();}
+bool IsBlocked(string computer)=>revoked.Contains(computer)||registry.Blocked(computer);
+// 컨테이너는 127.0.0.1에만 열려 있어 NAS의 역방향 프록시만 들어옵니다. 프록시가 붙여 준 실제 주소를 씁니다.
+string ClientIp(HttpContext c){var remote=c.Connection.RemoteIpAddress;var forwarded=c.Request.Headers["X-Forwarded-For"].ToString().Split(',',StringSplitOptions.RemoveEmptyEntries|StringSplitOptions.TrimEntries);return remote is not null&&System.Net.IPAddress.IsLoopback(remote.IsIPv4MappedToIPv6?remote.MapToIPv4():remote)&&forwarded.Length>0?forwarded[^1]:remote?.ToString()??"";}
+string CleanText(string? value,int max){var t=new string((value??"").Where(ch=>!char.IsControl(ch)).ToArray()).Trim();return t.Length>max?t[..max]:t;}
+const string ResetText="관리자가 이 기기의 서버 연결을 초기화했습니다. 초대 코드를 다시 입력하면 다시 연결됩니다.";
+const string BlockedText="서버 관리자가 이 기기를 차단했습니다. 서버를 통한 전송을 쓸 수 없습니다.";
 // The computer id a device token speaks for, or null (admin key or no token).
 string? TokenComputer(HttpContext c)
 {
@@ -37,8 +47,18 @@ string? TokenComputer(HttpContext c)
     var auth=c.Request.Headers.Authorization.ToString();
     if(!auth.StartsWith("Bearer ahna.",StringComparison.Ordinal))return null;
     var parts=auth[7..].Split('.');
-    if(parts.Length!=3||!Guid.TryParseExact(parts[1],"N",out _)||parts[1]!=parts[1].ToLowerInvariant()||revoked.Contains(parts[1]))return null;
-    return CryptographicOperations.FixedTimeEquals(Encoding.ASCII.GetBytes(parts[2]),Encoding.ASCII.GetBytes(DeviceToken(parts[1])))?parts[1]:null;
+    if(parts.Length!=3||!Guid.TryParseExact(parts[1],"N",out _)||parts[1]!=parts[1].ToLowerInvariant()||IsBlocked(parts[1]))return null;
+    if(!CryptographicOperations.FixedTimeEquals(Encoding.ASCII.GetBytes(parts[2]),Encoding.ASCII.GetBytes(DeviceToken(parts[1]))))return null;
+    registry.Touch(parts[1],ClientIp(c));
+    return parts[1];
+}
+// 초기화·차단으로 더 이상 맞지 않는 토큰을 가진, 서버가 아는 기기 ID (그 기기에 다시 연결하라고 알려 줄 때)
+string? StaleComputer(HttpContext c)
+{
+    var auth=c.Request.Headers.Authorization.ToString();
+    if(invite.Length==0||!auth.StartsWith("Bearer ahna.",StringComparison.Ordinal))return null;
+    var parts=auth[7..].Split('.');
+    return parts.Length==3&&Guid.TryParseExact(parts[1],"N",out _)&&parts[1]==parts[1].ToLowerInvariant()&&registry.Known(parts[1])?parts[1]:null;
 }
 var relayVersion=typeof(Wire).Assembly.GetName().Version is { } v?$"{v.Major}.{v.Minor}.{v.Build}":"0.0.0";
 app.UseWebSockets(new WebSocketOptions{KeepAliveInterval=TimeSpan.FromSeconds(20)});
@@ -61,7 +81,6 @@ app.Use(async(c,next)=>
 app.MapGet("/_ahna/version",()=>Results.Json(new{name="ahna-relay",version=relayVersion,invite=invite.Length>0}));
 // 앱 업데이트: GitHub Actions가 빌드한 파일을 PUT /_ahna/admin/update/{이름} 으로 올리고(AHNA_PUBLISH_KEY),
 // 앱은 GET /_ahna/update/latest.json 을 확인합니다. 파일은 컨테이너의 /data 볼륨에 있어 컨테이너를 다시 만들 필요가 없습니다.
-var dataRoot=Environment.GetEnvironmentVariable("AHNA_DATA")??"/data";
 var updateDir=Path.Combine(dataRoot,"updates");
 var publishKey=(Environment.GetEnvironmentVariable("AHNA_PUBLISH_KEY")??"").Trim();
 if(publishKey.Length is >0 and <32)throw new InvalidOperationException("AHNA_PUBLISH_KEY must be at least 32 characters.");
@@ -150,21 +169,34 @@ app.MapPost("/_ahna/join",async (HttpContext c)=>
     var computer=(body?.GetValueOrDefault("computer")??"").ToLowerInvariant();
     if(!Guid.TryParseExact(computer,"N",out _)){c.Response.StatusCode=400;return;}
     if(!CryptographicOperations.FixedTimeEquals(SHA256.HashData(Encoding.UTF8.GetBytes(code)),inviteHash)){c.Response.StatusCode=403;await c.Response.WriteAsJsonAsync(new{error="초대 코드가 맞지 않습니다."});return;}
-    if(revoked.Contains(computer)){c.Response.StatusCode=403;await c.Response.WriteAsJsonAsync(new{error="이 기기는 서버에서 차단되었습니다."});return;}
+    if(IsBlocked(computer)){c.Response.StatusCode=403;await c.Response.WriteAsJsonAsync(new{error="이 기기는 서버 관리자가 차단했습니다."});return;}
+    registry.Touch(computer,ClientIp(c),CleanText(body?.GetValueOrDefault("name"),40),CleanText(body?.GetValueOrDefault("platform"),20));
     await c.Response.WriteAsJsonAsync(new{token=$"ahna.{computer}.{DeviceToken(computer)}"});
 });
 app.MapGet("/_bridge/control",async (HttpContext c)=>
 {
     var member=TokenComputer(c);
+    // 알림을 받을 수 있는 앱(X-Ahna-Features: notice)이면, 초기화·차단된 기기에 이유를 알려 주고 닫습니다.
+    var notices=c.Request.Headers["X-Ahna-Features"].ToString().Split(',',StringSplitOptions.TrimEntries).Contains("notice");
+    if(member is null&&!Authorized(c)&&notices&&c.WebSockets.IsWebSocketRequest&&StaleComputer(c) is { } stale)
+    {
+        using var gone=await c.WebSockets.AcceptWebSocketAsync();
+        var blocked=IsBlocked(stale);
+        try{await Wire.SendJson(gone,new Dictionary<string,string>{["type"]="notice",["action"]=blocked?"blocked":"rejoin",["text"]=blocked?BlockedText:ResetText},c.RequestAborted);await gone.CloseAsync(WebSocketCloseStatus.PolicyViolation,"",c.RequestAborted);}catch{}
+        return;
+    }
     if(!(Authorized(c)||member is not null) || !c.WebSockets.IsWebSocketRequest){c.Response.StatusCode=401;return;}
     var computer=c.Request.Headers["X-Ahna-Computer"].ToString();
     // A member token only ever registers its own computer id.
     if(member is not null&&computer!=member){c.Response.StatusCode=403;return;}
     if(computer.Length==0)computer="legacy";
     if(computer!="legacy"&&!Guid.TryParseExact(computer,"N",out _)){c.Response.StatusCode=400;return;}
+    if(computer!="legacy"&&IsBlocked(computer)){c.Response.StatusCode=403;return;}
     if(controls.ContainsKey(computer)){c.Response.StatusCode=409;return;}
+    string deviceName;try{deviceName=CleanText(Uri.UnescapeDataString(c.Request.Headers["X-Ahna-Name"].ToString()),40);}catch(UriFormatException){deviceName="";}
+    if(computer!="legacy")registry.Touch(computer,ClientIp(c),deviceName,CleanText(c.Request.Headers["X-Ahna-Platform"].ToString(),20));
     using var ws=await c.WebSockets.AcceptWebSocketAsync();
-    var bridge=new RelayConnection(computer,ws,c.Request.Headers["X-Ahna-Pin-Hash"].ToString());
+    var bridge=new RelayConnection(computer,ws,c.Request.Headers["X-Ahna-Pin-Hash"].ToString(),notices);
     if(!controls.TryAdd(computer,bridge)){ws.Abort();return;}
     try{while(ws.State==WebSocketState.Open){using var idle=CancellationTokenSource.CreateLinkedTokenSource(c.RequestAborted);idle.CancelAfter(TimeSpan.FromSeconds(45));var ping=await Wire.ReadJson<Dictionary<string,string>>(ws,idle.Token);if(ping.GetValueOrDefault("type")!="ping")break;}}
     finally{controls.TryRemove(computer,out _);foreach(var item in pending.Where(p=>ReferenceEquals(p.Value.Bridge,bridge)))if(pending.TryRemove(item.Key,out var job))job.Waiting.TrySetCanceled();}
@@ -194,6 +226,7 @@ app.MapPost("/_ahna/drop",async (HttpContext c)=>
 {
     var member=TokenComputer(c);
     if(member is null){c.Response.StatusCode=401;return;}
+    if(OverLimit(member)){c.Response.StatusCode=429;await c.Response.WriteAsJsonAsync(new{error=LimitText(true)});return;}
     if(c.Request.ContentLength is null or >65536){c.Response.StatusCode=411;return;}
     if(drops.Values.Count(d=>d.Owner==member)>=4){c.Response.StatusCode=429;await c.Response.WriteAsJsonAsync(new{error="보내는 중인 것이 너무 많습니다. 잠시 후 다시 시도하세요."});return;}
     JsonDocument doc;
@@ -232,6 +265,7 @@ app.MapPut("/_ahna/drop/{token}/{index:int}",async (string token,int index,HttpC
     await using(var file=new FileStream(target,FileMode.Create,FileAccess.Write,FileShare.None,1<<16,FileOptions.Asynchronous))await c.Request.Body.CopyToAsync(file,c.RequestAborted);
     if(new FileInfo(target).Length!=d.Files[index].Bytes){c.Response.StatusCode=400;return;}
     lock(d){d.Uploaded[index]=true;if(d.Uploaded.All(x=>x)&&d.State=="uploading")d.State="ready";}
+    Count(d.Owner,d.Files[index].Bytes);
     await c.Response.WriteAsJsonAsync(new{state=d.State});
 });
 app.MapGet("/_ahna/drop/{token}",(string token,HttpContext c)=>OwnDrop(c,token) is { } d?Results.Json(new{state=d.State,completed=d.Completed.Count(x=>x),count=d.Files.Length}):Results.NotFound());
@@ -252,6 +286,7 @@ async Task ServeDrop(HttpContext c,string path)
         c.Response.ContentType="application/octet-stream";c.Response.ContentLength=new FileInfo(file).Length;
         c.Response.Headers.ContentDisposition="attachment; filename*=UTF-8''"+Uri.EscapeDataString(d.Files[i].Name);
         await c.Response.SendFileAsync(file,c.RequestAborted);
+        Count(d.Owner,d.Files[i].Bytes);
         bool all;lock(d){d.Completed[i]=true;all=d.Completed.All(x=>x);}
         if(all)EndDrop(d,"done");
         return;
@@ -323,6 +358,8 @@ app.MapFallback("/{**path}",async (HttpContext c)=>
         c.Response.StatusCode=target.Length>0||controls.IsEmpty?503:409;
         await c.Response.WriteAsJsonAsync(new{error=target.Length>0||controls.IsEmpty?"상대 기기가 오프라인입니다. 자동으로 다시 연결합니다.":"여러 기기가 연결되어 있습니다. 앱에서 연결 코드로 기기를 추가하세요."});return;
     }
+    var heavy=Wire.LargeBody(path)||path.StartsWith("/api/download/")||guestHost is not null&&path.Split('?')[0].Contains("/file/");
+    if(heavy&&OverLimit(selected.Id)){c.Response.StatusCode=429;await c.Response.WriteAsJsonAsync(new{error=LimitText(false)});return;}
     if(!await requests.WaitAsync(0,c.RequestAborted)){c.Response.StatusCode=429;return;}
     var id=Guid.NewGuid().ToString("N");
     using var timeout=CancellationTokenSource.CreateLinkedTokenSource(c.RequestAborted);timeout.CancelAfter(Wire.LargeBody(path) || path.StartsWith("/api/download/") || guestHost is not null && path.Split('?')[0].Contains("/file/")?TimeSpan.FromMinutes(45):TimeSpan.FromSeconds(40));
@@ -348,13 +385,127 @@ app.MapFallback("/{**path}",async (HttpContext c)=>
         if(head.Status is >=200 and <300 && path.Split('?')[0] is "/api/pair" or "/api/state")
             c.Response.Cookies.Append("ahna-computer",selected.Id,new CookieOptions{HttpOnly=true,Secure=!testing,SameSite=SameSiteMode.Strict,Path="/",MaxAge=TimeSpan.FromDays(30)});
         await Wire.ReceiveBody(data,c.Response.Body,head.Length.Value,ct);
+        Count(selected.Id,length+head.Length.Value);
         await Wire.SendJson(data,new{received=true},ct);
     }
     finally{pending.TryRemove(id,out _);data?.Abort();data?.Dispose();requests.Release();}
 });
+// 사용량: 서버를 거친 양을 그 기기 몫으로 더하고, 오늘 처음 한도를 넘으면 그 기기 앱에 알립니다.
+bool OverLimit(string computer)=>registry.Enforce&&registry.Used(computer)>=registry.LimitBytes;
+string LimitText(bool own)=>(own?"이 기기":"받는 기기")+$"가 오늘 서버 사용량 한도({registry.LimitGB:0.#} GB)를 다 썼습니다. 내일 다시 시도하거나 서버 관리자에게 문의하세요.";
+void Count(string computer,long bytes)
+{
+    if(computer=="legacy"||!registry.Add(computer,bytes))return;
+    _=Notice(computer,registry.Enforce?$"오늘 서버 사용량이 한도({registry.LimitGB:0.#} GB)를 넘었습니다. 오늘은 서버를 통한 파일 전송이 막힙니다(0시에 풀립니다).":$"오늘 서버 사용량이 관리자가 정한 기준({registry.LimitGB:0.#} GB)을 넘었습니다. 큰 파일은 가까이 있을 때 근처 기기로 보내 주세요.","limit");
+}
+async Task<bool> Notice(string computer,string text,string action)
+{
+    if(!controls.TryGetValue(computer,out var r)||!r.Notices)return false;
+    try
+    {
+        using var cts=new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await r.Send.WaitAsync(cts.Token);
+        try{await Wire.SendJson(r.Socket,new Dictionary<string,string>{["type"]="notice",["action"]=action,["text"]=text},cts.Token);}finally{r.Send.Release();}
+        return true;
+    }catch{return false;}
+}
+void Kick(string computer){if(controls.TryGetValue(computer,out var r))try{r.Socket.Abort();}catch{}}
+
+// 관리자 페이지: .env의 AHNA_ADMIN_PASSWORD 가 있을 때만 열립니다.
+var adminPassword=(Environment.GetEnvironmentVariable("AHNA_ADMIN_PASSWORD")??"").Trim();
+if(adminPassword.Length is >0 and <8)throw new InvalidOperationException("AHNA_ADMIN_PASSWORD must be at least 8 characters.");
+var adminHash=SHA256.HashData(Encoding.UTF8.GetBytes(adminPassword));
+var adminGate=new object();var adminFails=new Dictionary<string,(int Count,DateTimeOffset Since)>();
+string AdminSignature(long expires)=>Convert.ToHexString(HMACSHA256.HashData(Encoding.UTF8.GetBytes(key),Encoding.UTF8.GetBytes($"ahna-admin:{expires}:{Convert.ToHexString(adminHash)}"))).ToLowerInvariant();
+bool IsAdmin(HttpContext c)
+{
+    if(adminPassword.Length==0||c.Request.Headers["X-Ahna-Admin"]!="1")return false;
+    var parts=(c.Request.Cookies["ahna-admin"]??"").Split('.');
+    return parts.Length==2&&long.TryParse(parts[0],out var expires)&&expires>DateTimeOffset.UtcNow.ToUnixTimeSeconds()&&CryptographicOperations.FixedTimeEquals(Encoding.ASCII.GetBytes(parts[1]),Encoding.ASCII.GetBytes(AdminSignature(expires)));
+}
+bool AdminDevice(string id)=>Guid.TryParseExact(id,"N",out _)&&id==id.ToLowerInvariant()&&registry.Known(id);
+app.MapGet("/_ahna/admin",(HttpContext c)=>
+{
+    if(adminPassword.Length==0)return Results.NotFound();
+    var nonce=Convert.ToBase64String(RandomNumberGenerator.GetBytes(16));
+    c.Response.Headers["Content-Security-Policy"]=$"default-src 'none'; script-src 'nonce-{nonce}'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
+    c.Response.Headers["X-Frame-Options"]="DENY";
+    return Results.Content(AdminPage.Html(nonce),"text/html; charset=utf-8");
+});
+app.MapPost("/_ahna/admin/login",async (HttpContext c)=>
+{
+    if(adminPassword.Length==0||c.Request.Headers["X-Ahna-Admin"]!="1"){c.Response.StatusCode=404;return;}
+    var ip=ClientIp(c);bool locked;
+    lock(adminGate)
+    {
+        var now=DateTimeOffset.UtcNow;var fails=adminFails.GetValueOrDefault(ip);
+        if(now-fails.Since>TimeSpan.FromMinutes(15))fails=(0,now);
+        if(adminFails.Count>4096)adminFails.Clear();
+        adminFails[ip]=fails;locked=fails.Count>=5;
+    }
+    if(locked){c.Response.StatusCode=429;await c.Response.WriteAsJsonAsync(new{error="비밀번호를 너무 많이 틀렸습니다. 15분 뒤에 다시 시도하세요."});return;}
+    if(c.Request.ContentLength is null or >1024){c.Response.StatusCode=411;return;}
+    Dictionary<string,string>? body;
+    try{body=await JsonSerializer.DeserializeAsync<Dictionary<string,string>>(c.Request.Body,cancellationToken:c.RequestAborted);}catch(JsonException){c.Response.StatusCode=400;return;}
+    if(!CryptographicOperations.FixedTimeEquals(SHA256.HashData(Encoding.UTF8.GetBytes(body?.GetValueOrDefault("password")??"")),adminHash))
+    {
+        lock(adminGate){var f=adminFails.GetValueOrDefault(ip);adminFails[ip]=(f.Count+1,f.Since);}
+        await Task.Delay(800);c.Response.StatusCode=403;await c.Response.WriteAsJsonAsync(new{error="비밀번호가 맞지 않습니다."});return;
+    }
+    lock(adminGate)adminFails.Remove(ip);
+    var expires=DateTimeOffset.UtcNow.AddHours(12).ToUnixTimeSeconds();
+    c.Response.Cookies.Append("ahna-admin",$"{expires}.{AdminSignature(expires)}",new CookieOptions{HttpOnly=true,Secure=!testing,SameSite=SameSiteMode.Strict,Path="/_ahna/admin",MaxAge=TimeSpan.FromHours(12)});
+    await c.Response.WriteAsJsonAsync(new{ok=true});
+});
+app.MapPost("/_ahna/admin/logout",(HttpContext c)=>{c.Response.Cookies.Delete("ahna-admin",new CookieOptions{Path="/_ahna/admin"});return Results.Ok();});
+app.MapGet("/_ahna/admin/api/state",(HttpContext c)=>IsAdmin(c)?Results.Json(registry.Snapshot(id=>controls.ContainsKey(id))):Results.Unauthorized());
+app.MapPost("/_ahna/admin/api/settings",async (HttpContext c)=>
+{
+    if(!IsAdmin(c)){c.Response.StatusCode=401;return;}
+    JsonDocument doc;try{doc=await JsonDocument.ParseAsync(c.Request.Body,cancellationToken:c.RequestAborted);}catch(JsonException){c.Response.StatusCode=400;return;}
+    using(doc)
+    {
+        var limit=doc.RootElement.TryGetProperty("limitGB",out var l)&&l.TryGetDouble(out var v)&&double.IsFinite(v)?v:0;
+        var enforce=doc.RootElement.TryGetProperty("enforce",out var e)&&e.ValueKind==JsonValueKind.True;
+        registry.Settings(limit,enforce);
+    }
+    await c.Response.WriteAsJsonAsync(new{ok=true});
+});
+app.MapPost("/_ahna/admin/api/device/{id}/{action}",async (string id,string action,HttpContext c)=>
+{
+    if(!IsAdmin(c)){c.Response.StatusCode=401;return;}
+    if(!AdminDevice(id)){c.Response.StatusCode=404;await c.Response.WriteAsJsonAsync(new{error="없는 기기입니다."});return;}
+    switch(action)
+    {
+        case "notice":
+            string text="";
+            try{using var doc=await JsonDocument.ParseAsync(c.Request.Body,cancellationToken:c.RequestAborted);text=CleanText(doc.RootElement.TryGetProperty("text",out var t)?t.GetString():"",200);}catch(JsonException){}
+            if(text.Length==0){c.Response.StatusCode=400;await c.Response.WriteAsJsonAsync(new{error="알림 내용을 입력하세요."});return;}
+            await c.Response.WriteAsJsonAsync(new{delivered=await Notice(id,"서버 관리자: "+text,"message")});return;
+        case "block":
+            registry.SetBlocked(id,true);await Notice(id,BlockedText,"blocked");Kick(id);break;
+        case "unblock":
+            registry.SetBlocked(id,false);break;
+        case "reset":
+            registry.Reset(id);await Notice(id,ResetText,"rejoin");Kick(id);break;
+        case "hide":
+            registry.Hide(id);break;
+        default:
+            c.Response.StatusCode=404;return;
+    }
+    await c.Response.WriteAsJsonAsync(new{ok=true});
+});
+app.MapPost("/_ahna/admin/api/reset-all",async (HttpContext c)=>
+{
+    if(!IsAdmin(c)){c.Response.StatusCode=401;return;}
+    registry.ResetAll();
+    foreach(var id in controls.Keys.Where(k=>k!="legacy").ToArray()){await Notice(id,ResetText,"rejoin");Kick(id);}
+    await c.Response.WriteAsJsonAsync(new{ok=true});
+});
+
 await app.RunAsync();
 
-sealed record RelayConnection(string Id,WebSocket Socket,string PinHash)
+sealed record RelayConnection(string Id,WebSocket Socket,string PinHash,bool Notices=false)
 {
     public SemaphoreSlim Send { get; }=new(1,1);
 }

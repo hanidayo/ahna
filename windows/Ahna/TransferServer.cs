@@ -38,6 +38,8 @@ public sealed class TransferServer : IAsyncDisposable
     public event Action<string>? Delivered;
     public event Action<string>? ClientSaved;
     public event Action<string>? ClipboardReceived;
+    /// 서버 관리자가 보낸 알림(action: limit·message·rejoin·blocked, text). rejoin·blocked면 서버 연결 정보를 지웁니다.
+    public event Action<string, string>? ServerNotice;
     public Action? ClipboardRequested;
     public Func<string, Task>? PickRequested;
     public Action? SettingsRequested;
@@ -112,7 +114,7 @@ public sealed class TransferServer : IAsyncDisposable
     {
         using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
         HttpResponseMessage response;
-        try { response = await http.PostAsync(server.TrimEnd('/') + "/_ahna/join", new StringContent(JsonSerializer.Serialize(new { invite, computer = computerId }), Encoding.UTF8, "application/json"), ct); }
+        try { response = await http.PostAsync(server.TrimEnd('/') + "/_ahna/join", new StringContent(JsonSerializer.Serialize(new { invite, computer = computerId, name = GuestOwnerName, platform = OperatingSystem.IsMacOS() ? "Mac" : "Windows" }), Encoding.UTF8, "application/json"), ct); }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException) { throw new ArgumentException("서버에 연결하지 못했습니다. 인터넷 연결을 확인한 뒤 다시 시도하세요."); }
         using (response)
         {
@@ -125,6 +127,12 @@ public sealed class TransferServer : IAsyncDisposable
             if (!Ahna.Remote.Brand.IsMemberToken(token)) throw new ArgumentException("서버 응답이 올바르지 않습니다.");
             return token;
         }
+    }
+    /// 서버에서 초기화·차단되면 연결 키를 지워, 초대 코드를 다시 입력하는 화면이 나오게 합니다.
+    void ForgetServer()
+    {
+        lock (gate) { if (string.IsNullOrEmpty(Settings.RemoteKeyProtected)) return; Settings.RemoteKeyProtected = ""; Settings.RemoteEnabled = false; Util.SaveJson(Path.Combine(data, "settings.json"), Settings); }
+        bridge?.Reload();
     }
     public void ClearHistory() { lock(gate) { history.Clear(); Util.SaveJson(Path.Combine(data,"history.json"),history); } }
     public HistoryItem[] HistorySnapshot() { lock(gate) return history.Take(20).ToArray(); }
@@ -532,6 +540,12 @@ public sealed class TransferServer : IAsyncDisposable
         app.UseDefaultFiles(); app.UseStaticFiles();
         await app.StartAsync();
         bridge=new(new Uri(LocalUrl),Path.Combine(data,"remote-parts"),()=>Settings.RemoteEnabled?new(Settings.RemoteUrl,RemoteKey.Unprotect(Settings.RemoteKeyProtected)):null,computerId:computerId,pairingPin:()=>Pin);
+        bridge.DeviceName=()=>GuestOwnerName; bridge.Platform=OperatingSystem.IsMacOS()?"Mac":"Windows";
+        bridge.Notice+=(action,text)=>
+        {
+            if(action is "rejoin" or "blocked")ForgetServer();
+            try { ServerNotice?.Invoke(action, text); } catch { }
+        };
     }
     static IResult NearbyUnavailable() => Results.Json(new { error = "이 컴퓨터에서는 근처 기기와 QR을 쓸 수 없습니다." }, statusCode: 503);
     static IResult ExternalUnavailable() => Results.Json(new { error = "이 컴퓨터에서는 다른 기기를 추가할 수 없습니다." }, statusCode: 503);

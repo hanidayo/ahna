@@ -263,7 +263,16 @@ struct MacReceiverDevice: Identifiable, Equatable {
             }
         case "saved": message = joining ? "서버에 연결했습니다." : "옵션을 저장했습니다."; joining = false
         case "received": message = (object["message"] as? String ?? "파일") + " · 저장 완료"
-        case "clipboardReceived": message = (object["sender"] as? String ?? "기기") + "에서 글자가 도착했습니다. 클립보드의 받은 글자에서 복사하세요."
+        case "notice":
+            // 서버 관리자 알림(사용량 한도·메시지·초기화·차단)
+            let text = object["text"] as? String ?? "서버 알림", informational = (object["action"] as? String) == "message"
+            message = text
+            Task { @MainActor in
+                let alert = NSAlert(); alert.messageText = "아나 · 서버 알림"; alert.informativeText = text
+                alert.alertStyle = informational ? .informational : .warning
+                NSApp.activate(ignoringOtherApps: true); alert.runModal()
+            }
+        case "clipboardReceived": message =(object["sender"] as? String ?? "기기") + "에서 글자가 도착했습니다. 클립보드의 받은 글자에서 복사하세요."
         case "reverseOffer":
             guard let requestID = object["requestID"] as? String else { break }
             if let offer = object["offer"] as? [String: Any], let data = try? JSONSerialization.data(withJSONObject: offer), let text = String(data: data, encoding: .utf8) {

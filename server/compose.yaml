@@ -14,6 +14,8 @@ services:
       AHNA_KEY: ${AHNA_KEY:?Generate a random key in .env}
       AHNA_INVITE: ${AHNA_INVITE:?Set the invite code in .env}
       AHNA_PUBLISH_KEY: ${AHNA_PUBLISH_KEY:-}
+      AHNA_ADMIN_PASSWORD: ${AHNA_ADMIN_PASSWORD:-}   # 관리자 페이지 {서버}/_ahna/admin (비워 두면 꺼짐)
+      TZ: ${TZ:-Asia/Seoul}                            # 하루 사용량이 바뀌는 시각(0시) 기준
     volumes:
       - ahna-data:/data
     labels:

@@ -8,6 +8,10 @@ final class MobileNASBridge: @unchecked Sendable {
     let origin: URL
     let key: String
     let changed: @Sendable (String) -> Void
+    /// 서버 관리자 화면에 보일 기기 종류(iPhone·iPad)
+    var platform = "iPhone"
+    /// 서버가 보낸 알림(action: limit·message·rejoin·blocked, text)
+    var notice: (@Sendable (String, String) -> Void)?
     private let session: URLSession
     private let gate = NSLock()
     private var sockets: [URLSessionWebSocketTask] = []
@@ -27,6 +31,9 @@ final class MobileNASBridge: @unchecked Sendable {
         var request = URLRequest(url: parts.url!); request.setValue("Bearer " + key, forHTTPHeaderField: "Authorization")
         if control {
             request.setValue(host.identity, forHTTPHeaderField: "X-Ahna-Computer")
+            request.setValue("notice", forHTTPHeaderField: "X-Ahna-Features")
+            request.setValue(host.name.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? "", forHTTPHeaderField: "X-Ahna-Name")
+            request.setValue(platform, forHTTPHeaderField: "X-Ahna-Platform")
             request.setValue(SHA256.hash(data: Data(host.pin.utf8)).map { String(format: "%02X", $0) }.joined(), forHTTPHeaderField: "X-Ahna-Pin-Hash")
         }
         let task = session.webSocketTask(with: request); task.maximumMessageSize = 65536
@@ -48,6 +55,7 @@ final class MobileNASBridge: @unchecked Sendable {
         let ping = Task { do { while !Task.isCancelled { try await Task.sleep(nanoseconds: 15_000_000_000); try await control.send(.string("{\"type\":\"ping\"}")) } } catch { control.cancel(with: .goingAway, reason: nil) } }; defer { ping.cancel() }
         while !Task.isCancelled {
             let message = try await json(control)
+            if message["type"] as? String == "notice" { notice?(message["action"] as? String ?? "", message["text"] as? String ?? ""); continue }
             guard let id = message["id"] as? String, Self.validID(id) else { throw AhnaError.message("올바르지 않은 중계 요청") }
             launch(id)
         }

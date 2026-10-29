@@ -52,6 +52,10 @@ struct HomeView: View {
         .overlay { if nearby.incoming != nil && nearby.sheetDepth == 0 { NearbyRequestOverlay(center: nearby) } }
         // 아나: 처음 실행하면 초대 코드로 서버에 가입합니다(가입 전에는 닫을 수 없음).
         .fullScreenCover(isPresented: $host.needsJoin) { JoinScreen(host: host) }
+        // 서버 관리자 알림(사용량 한도·메시지). 초기화·차단 안내는 초대 코드 화면에 표시됩니다.
+        .alert("아나 · 서버 알림", isPresented: Binding(get: { host.noticeText != nil && !host.needsJoin }, set: { if !$0 { host.noticeText = nil } })) {
+            Button("확인", role: .cancel) { host.noticeText = nil }
+        } message: { Text(host.noticeText ?? "") }
         .task(id: "\(phase)-\(client.pollID)") {
             // 이 기기 수신 쪽의 ID를 연결·상태 확인 때 함께 보내, 상대 기기가 이 기기를 한 번만 보여 주게 합니다.
             client.hostIdentity = host.engine?.identity
