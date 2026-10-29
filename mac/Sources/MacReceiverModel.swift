@@ -22,6 +22,12 @@ struct MacReceiverDevice: Identifiable, Equatable {
     @Published var remoteURL = Brand.server
     /// 아나 서버에 가입했는지 (nil: 아직 모름). false면 첫 화면에서 초대 코드를 묻습니다.
     @Published var joined: Bool?
+    /// 서버 관리자 공지(읽은 공지는 3일 뒤 빠짐). 새 공지가 오면 showNotices로 팝업을 띄웁니다.
+    @Published private(set) var announcements: [MacAnnouncement] = []
+    @Published var showNotices = false
+    var unreadNotices: Int { announcements.filter { !$0.read }.count }
+    func readAnnouncement(_ id: String) { try? write(["command": "announcementRead", "id": id]) }
+    func deleteAnnouncement(_ id: String) { try? write(["command": "announcementDelete", "id": id]) }
     @Published var joining = false
     private var savedMemberToken: String?
     @Published var remoteKey = ""
@@ -232,6 +238,11 @@ struct MacReceiverDevice: Identifiable, Equatable {
             savePath = object["savePath"] as? String ?? savePath; remoteStatus = object["remoteStatus"] as? String ?? ""
             clipboardSupported = object["clipboardSupported"] as? Bool ?? false
             if let value = object["joined"] as? Bool { joined = value }
+            let notes = ((object["announcements"] as? [[String: Any]]) ?? []).compactMap { item -> MacAnnouncement? in
+                guard let id = item["id"] as? String, let text = item["text"] as? String else { return nil }
+                return MacAnnouncement(id: id, text: text, created: Date(timeIntervalSince1970: (item["created"] as? NSNumber)?.doubleValue ?? 0), read: item["read"] as? Bool ?? false)
+            }
+            if notes != announcements { announcements = notes; if notes.isEmpty { showNotices = false } }
             if let token = object["memberToken"] as? String, token != savedMemberToken, Brand.isMemberToken(token) {
                 savedMemberToken = token; try? ComputerVault.saveMemberToken(token)
             }
@@ -263,6 +274,9 @@ struct MacReceiverDevice: Identifiable, Equatable {
             }
         case "saved": message = joining ? "서버에 연결했습니다." : "옵션을 저장했습니다."; joining = false
         case "received": message = (object["message"] as? String ?? "파일") + " · 저장 완료"
+        case "announcements":
+            // 읽지 않은 새 공지: 창을 열고 공지 팝업을 띄웁니다(목록은 이어서 오는 status에 있음).
+            BackgroundSession.shared.showMain(); showNotices = true
         case "notice":
             // 서버 관리자 알림(사용량 한도·메시지·초기화·차단)
             let text = object["text"] as? String ?? "서버 알림", informational = (object["action"] as? String) == "message"
@@ -340,4 +354,12 @@ struct MacReceiverDevice: Identifiable, Equatable {
         guard SecItemAdd(add as CFDictionary, nil) == errSecSuccess else { throw CocoaError(.fileWriteNoPermission) }
         return data
     }
+}
+
+/// 서버 관리자 공지
+struct MacAnnouncement: Identifiable, Equatable {
+    let id: String
+    let text: String
+    let created: Date
+    let read: Bool
 }

@@ -61,6 +61,9 @@ public sealed class RemoteBridge : IAsyncDisposable
 	/// 서버가 보낸 알림(action: limit·message·rejoin·blocked, text)
 	public event Action<string, string>? Notice;
 
+	/// 서버에 연결될 때마다(공지를 다시 받아 갈 때)
+	public event Action? Connected;
+
 	public RemoteBridge(Uri local, string cache, Func<BridgeConfig?> configuration, bool testHttp = false, string? computerId = null, Func<string>? pairingPin = null)
 	{
 		if (!local.IsLoopback || local.Scheme != "http")
@@ -185,7 +188,7 @@ public sealed class RemoteBridge : IAsyncDisposable
 				control.Options.SetRequestHeader("Authorization", "Bearer " + key);
 				control.Options.KeepAliveInterval = TimeSpan.FromSeconds(15L);
 				control.Options.SetRequestHeader("X-Ahna-Computer", computerId);
-				control.Options.SetRequestHeader("X-Ahna-Features", "notice");
+				control.Options.SetRequestHeader("X-Ahna-Features", "notice,notices");
 				if (DeviceName != null)
 				{
 					control.Options.SetRequestHeader("X-Ahna-Name", Uri.EscapeDataString(DeviceName()));
@@ -200,6 +203,13 @@ public sealed class RemoteBridge : IAsyncDisposable
 				}
 				await control.ConnectAsync(SocketUri(endpoint, "/_bridge/control"), linked.Token);
 				status = "서버 연결됨 · 원격 전송 가능";
+				try
+				{
+					Connected?.Invoke();
+				}
+				catch
+				{
+				}
 				ConcurrentDictionary<int, Task> jobs = new ConcurrentDictionary<int, Task>();
 				int sequence = 0;
 				Task ping = Task.Run(async () =>

@@ -52,6 +52,8 @@ struct HomeView: View {
         .overlay { if nearby.incoming != nil && nearby.sheetDepth == 0 { NearbyRequestOverlay(center: nearby) } }
         // 아나: 처음 실행하면 초대 코드로 서버에 가입합니다(가입 전에는 닫을 수 없음).
         .fullScreenCover(isPresented: $host.needsJoin) { JoinScreen(host: host) }
+        // 서버 관리자 공지: 읽지 않은 새 공지는 한 번 저절로 뜨고, 머리글의 [공지]로 다시 볼 수 있습니다.
+        .sheet(isPresented: Binding(get: { host.showNotices && !host.needsJoin }, set: { host.showNotices = $0 })) { NoticesSheet(host: host) }
         // 서버 관리자 알림(사용량 한도·메시지). 초기화·차단 안내는 초대 코드 화면에 표시됩니다.
         .alert("아나 · 서버 알림", isPresented: Binding(get: { host.noticeText != nil && !host.needsJoin }, set: { if !$0 { host.noticeText = nil } })) {
             Button("확인", role: .cancel) { host.noticeText = nil }
@@ -94,6 +96,22 @@ struct ScreenHeader: View {
     let nasStatus: String
     let regular: Bool
     var detail: String? = nil
+    /// 서버 관리자 공지: 공지가 있으면 [공지] 단추(읽지 않은 개수 표시)
+    var noticeUnread: Int? = nil
+    var onNotices: (() -> Void)? = nil
+    @ViewBuilder private var bell: some View {
+        if let noticeUnread, let onNotices {
+            Button(action: onNotices) {
+                ZStack(alignment: .topTrailing) {
+                    Image(systemName: noticeUnread > 0 ? "bell.badge.fill" : "bell").font(.system(size: 18, weight: .semibold))
+                        .symbolRenderingMode(.palette).foregroundStyle(noticeUnread > 0 ? Color.red : AhnaPalette.text, AhnaPalette.text)
+                        .frame(width: 36, height: 36)
+                }
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(noticeUnread > 0 ? "읽지 않은 공지 \(noticeUnread)개" : "공지")
+        }
+    }
     var body: some View {
         HStack(spacing: regular ? 12 : 10) {
             if showsLogo { AhnaLogoTile(size: regular ? 36 : 32) }
@@ -114,8 +132,10 @@ struct ScreenHeader: View {
                 if let detail {
                     Text(detail).font(.system(size: 13)).foregroundStyle(AhnaPalette.faint).lineLimit(1)
                 }
+                bell
             } else {
                 Spacer(minLength: 8)
+                bell
                 NASStatusPill(status: nasStatus)
             }
         }
@@ -319,7 +339,8 @@ struct SendReceiveScreen: View {
     @MainActor private func page(columns: Int) -> some View {
         let regular = columns >= 2
         return AhnaPage(header: ScreenHeader(title: "아나", showsLogo: true, showsVersion: true, nasStatus: nasHeaderStatus(host: host, client: client), regular: regular,
-                                                 detail: "이 기기 · \(client.deviceName) · 코드 \(AhnaText.spacedCode(host.pin))")) {
+                                                 detail: "이 기기 · \(client.deviceName) · 코드 \(AhnaText.spacedCode(host.pin))",
+                                                 noticeUnread: host.announcements.isEmpty ? nil : host.unreadNotices, onNotices: { host.showNotices = true })) {
             if columns >= 3 {
                 HStack(alignment: .top, spacing: 16) {
                     VStack(spacing: 16) { targetCard; fileCard(regular: true) }.frame(maxWidth: .infinity, alignment: .top)
@@ -841,7 +862,8 @@ struct OptionsScreen: View {
     /// columns: 1 = 휴대폰 배치, 2 = 2열(iPad 세로), 3 = 3열(iPad 가로)
     @MainActor private func page(columns: Int) -> some View {
         let regular = columns >= 2
-        return AhnaPage(header: ScreenHeader(title: "옵션", showsLogo: regular, nasStatus: nasHeaderStatus(host: host, client: client), regular: regular)) {
+        return AhnaPage(header: ScreenHeader(title: "옵션", showsLogo: regular, nasStatus: nasHeaderStatus(host: host, client: client), regular: regular,
+                                                 noticeUnread: host.announcements.isEmpty ? nil : host.unreadNotices, onNotices: { host.showNotices = true })) {
             AhnaMeaningBanner().padding(.horizontal, regular ? 24 : 16).padding(.top, regular ? 4 : 16).padding(.bottom, regular ? 12 : 0)
             if columns >= 3 {
                 HStack(alignment: .top, spacing: 16) {
@@ -1280,5 +1302,44 @@ struct NASEditorSheet: View {
         }
         .presentationDetents([.large])
         .tint(AhnaPalette.accent)
+    }
+}
+
+// MARK: - 서버 관리자 공지
+
+struct NoticesSheet: View {
+    @ObservedObject var host: MobileHostModel
+    @Environment(\.dismiss) private var dismiss
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 12) {
+                    ForEach(host.announcements) { note in
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text(note.text).font(.system(size: 16)).frame(maxWidth: .infinity, alignment: .leading).textSelection(.enabled)
+                            HStack {
+                                Text(note.created.formatted(date: .abbreviated, time: .shortened) + (note.read ? " · 읽음 · 3일 뒤 사라짐" : " · 읽지 않음"))
+                                    .font(.system(size: 12)).foregroundStyle(AhnaPalette.faint)
+                                Spacer()
+                                if note.read {
+                                    Button("삭제", role: .destructive) { host.deleteNotice(note.id) }.buttonStyle(.bordered).controlSize(.small)
+                                } else {
+                                    Button("읽음") { host.readNotice(note.id) }.buttonStyle(.borderedProminent).controlSize(.small)
+                                }
+                            }
+                        }
+                        .padding(16)
+                        .background(RoundedRectangle(cornerRadius: 14).fill(AhnaPalette.surface))
+                        .overlay(RoundedRectangle(cornerRadius: 14).stroke(note.read ? Color.clear : AhnaPalette.accent, lineWidth: 1.5))
+                    }
+                }
+                .padding(16)
+            }
+            .background(AhnaPalette.bg.ignoresSafeArea())
+            .navigationTitle("공지").navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("닫기") { dismiss() } } }
+        }
+        .tint(AhnaPalette.accent)
+        .presentationDetents([.medium, .large])
     }
 }

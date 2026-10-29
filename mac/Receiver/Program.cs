@@ -24,11 +24,14 @@ try
     server.Received+=text=>{_ = Emit(new{type="received",message=text});};
     async Task Status()=>await Emit(new{type="status",pin=server.Pin,addresses=server.Addresses,hostName=Environment.MachineName,savePath=server.Settings.SavePath,remoteStatus=server.RemoteStatus,remoteEnabled=server.Settings.RemoteEnabled,remoteUrl=server.Settings.RemoteUrl,joined=!string.IsNullOrEmpty(server.Settings.RemoteKeyProtected),memberToken=MemberToken(),
         history=server.HistorySnapshot(),clipboardSupported=true,devices=server.Nearby().Select(x=>new{id=x.Id,name=x.Name}),
-        computerID=server.ComputerId,peers=server.Peers().Select(x=>new{id=x.Id,name=x.Name,computerID=x.ComputerId,online=x.Online}),clipboard=server.ClipboardInbox().Select(x=>new{x.Id,x.Sender,x.Bytes,x.Created})});
+        computerID=server.ComputerId,peers=server.Peers().Select(x=>new{id=x.Id,name=x.Name,computerID=x.ComputerId,online=x.Online}),clipboard=server.ClipboardInbox().Select(x=>new{x.Id,x.Sender,x.Bytes,x.Created}),
+        announcements=server.Announcements().Select(a=>new{id=a.Id,text=a.Text,created=a.Created.ToUnixTimeSeconds(),read=a.Read})});
     // 공유 메뉴(근처 기기로 보내기)가 쓰도록 연결 토큰을 Swift 앱에 알립니다(이 프로세스와 앱 사이의 파이프로만).
     string? MemberToken(){try{var key=string.IsNullOrEmpty(server.Settings.RemoteKeyProtected)?"":RemoteKey.Unprotect(server.Settings.RemoteKeyProtected);return Brand.IsMemberToken(key)?key:null;}catch{return null;}}
     server.ClipboardReceived+=sender=>{_ = Emit(new{type="clipboardReceived",sender});_ = Status();};
     // 서버 관리자 알림(사용량 한도·메시지·초기화·차단). 초기화·차단이면 연결 정보가 지워져 초대 코드 화면이 나옵니다.
+    // 서버 관리자 공지: 새 공지가 오면 앱이 팝업을 띄웁니다(목록은 status의 announcements).
+    server.NewAnnouncements+=list=>{_ = Emit(new{type="announcements",fresh=list.Select(a=>a.Id)});_ = Status();};
     server.ServerNotice+=(action,text)=>{_ = Emit(new{type="notice",action,text});_ = Status();};
     // 근처 기기 · QR 공유: 1회용 게스트 티켓 상태를 Swift 앱에 알립니다.
     object Snap(TransferServer.GuestTicket t)=>new{token=t.Token,kind=t.Kind,state=t.State,code=t.Code,expires=t.Expires.ToUnixTimeSeconds(),files=t.Files.Select(f=>new{name=f.Name,bytes=f.Bytes}),completed=t.CompletedCount,peer=t.Peer,transferred=t.Transferred,total=t.Total};
@@ -86,6 +89,10 @@ try
                     }
                     else ticket=server.CreateReceiveTicket(ticketPeer.Length>0?ticketPeer:"QR");
                     await Emit(new{type="ticket",requestID,ticket=Snap(ticket),url=server.GuestUrl(ticket)});break;
+                case "announcementRead":
+                    server.ReadAnnouncement(command.GetProperty("id").GetString()??"");await Status();break;
+                case "announcementDelete":
+                    server.DeleteAnnouncement(command.GetProperty("id").GetString()??"");await Status();break;
                 case "ticketCancel":
                     server.CancelTicket(command.GetProperty("token").GetString()??"");break;
                 case "ticketAnswer":

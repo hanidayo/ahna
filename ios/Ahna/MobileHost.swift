@@ -717,12 +717,14 @@ private final class MobileHTTPRequest {
             relay = try MobileNASBridge(host: engine, address: nasAddress, key: key) { [weak self] value in Task { @MainActor in self?.remoteStatus = value } }
             relay?.platform = UIDevice.current.userInterfaceIdiom == .pad ? "iPad" : "iPhone"
             relay?.notice = { [weak self] action, text in Task { @MainActor in self?.serverNotice(action, text) } }
+            relay?.connected = { [weak self] in Task { @MainActor in await self?.refreshNotices() } }
             relay?.start()
         } catch { remoteStatus = error.localizedDescription }
     }
     /// 서버 관리자 알림. 초기화·차단이면 연결 키를 지우고 초대 코드 화면을 띄웁니다.
     @Published var noticeText: String?
     func serverNotice(_ action: String, _ text: String) {
+        if action == "notices" { Task { await refreshNotices() }; return }
         noticeText = text
         if action == "rejoin" || action == "blocked" {
             relay?.stop(); relay = nil
@@ -730,6 +732,57 @@ private final class MobileHTTPRequest {
             remoteStatus = text; needsJoin = true
         }
     }
+    // MARK: 서버 관리자 공지
+    // 서버에 연결할 때마다 받아 오고, 읽음·삭제는 이 기기에 저장합니다. 읽은 공지는 3일 뒤 보이지 않습니다.
+    struct Announcement: Identifiable, Equatable { let id: String; let text: String; let created: Date; let read: Bool }
+    @Published private(set) var announcements: [Announcement] = []
+    @Published var showNotices = false
+    var unreadNotices: Int { announcements.filter { !$0.read }.count }
+    private var serverNotices: [(id: String, text: String, created: Date)] = []
+    private var poppedNotices = Set<String>()
+    private var noticeRead: [String: Double] {
+        get { UserDefaults.standard.dictionary(forKey: "noticeRead") as? [String: Double] ?? [:] }
+        set { UserDefaults.standard.set(newValue, forKey: "noticeRead") }
+    }
+    private var noticeDeleted: [String] {
+        get { UserDefaults.standard.stringArray(forKey: "noticeDeleted") ?? [] }
+        set { UserDefaults.standard.set(newValue, forKey: "noticeDeleted") }
+    }
+    private func noticeRequest(_ path: String, _ method: String) -> URLRequest? {
+        let key = String(decoding: (try? MobileHTTPHost.secret("nas-key")) ?? Data(), as: UTF8.self)
+        guard Brand.isMemberToken(key), let url = URL(string: Brand.server + path) else { return nil }
+        var request = URLRequest(url: url); request.httpMethod = method; request.timeoutInterval = 20
+        request.setValue("Bearer " + key, forHTTPHeaderField: "Authorization"); return request
+    }
+    private func applyNotices() {
+        let read = noticeRead, deleted = Set(noticeDeleted), now = Date().timeIntervalSince1970
+        let next = serverNotices.filter { !deleted.contains($0.id) && !(read[$0.id].map { now - $0 > 3 * 86400 } ?? false) }
+            .map { Announcement(id: $0.id, text: $0.text, created: $0.created, read: read[$0.id] != nil) }
+        if next != announcements { announcements = next }
+        if next.isEmpty { showNotices = false }
+    }
+    func refreshNotices() async {
+        guard let request = noticeRequest("/_ahna/notices", "GET") else { return }
+        guard let (data, response) = try? await URLSession(configuration: .ephemeral).data(for: request), (response as? HTTPURLResponse)?.statusCode == 200,
+              let list = ((try? JSONSerialization.jsonObject(with: data)) as? [String: Any])?["notices"] as? [[String: Any]] else { return }
+        serverNotices = list.prefix(30).compactMap { item in
+            guard let id = item["id"] as? String, let text = item["text"] as? String, !id.isEmpty, !text.isEmpty else { return nil }
+            return (id, text, Date(timeIntervalSince1970: (item["created"] as? NSNumber)?.doubleValue ?? Date().timeIntervalSince1970))
+        }
+        // 서버에서 지운 공지의 기록은 정리
+        let ids = Set(serverNotices.map(\.id))
+        noticeRead = noticeRead.filter { ids.contains($0.key) }; noticeDeleted = noticeDeleted.filter { ids.contains($0) }
+        applyNotices()
+        // 읽지 않은 새 공지는 한 번 저절로 띄웁니다.
+        let fresh = announcements.filter { !$0.read && !poppedNotices.contains($0.id) }
+        if !fresh.isEmpty { fresh.forEach { poppedNotices.insert($0.id) }; showNotices = true }
+    }
+    func readNotice(_ id: String) {
+        var read = noticeRead; guard read[id] == nil else { return }
+        read[id] = Date().timeIntervalSince1970; noticeRead = read; applyNotices()
+        if let request = noticeRequest("/_ahna/notices/\(id)/read", "POST") { Task { _ = try? await URLSession(configuration: .ephemeral).data(for: request) } }
+    }
+    func deleteNotice(_ id: String) { guard noticeRead[id] != nil else { return }; noticeDeleted = Array(Set(noticeDeleted + [id])); applyNotices() }
     func disableNAS() { UserDefaults.standard.set(false, forKey: "mobileNasEnabled"); relay?.stop(); relay = nil; remoteStatus = "서버 설정이 필요합니다." }
     func revoke() { relay?.stop(); relay = nil; engine?.revoke { [weak self] in Task { @MainActor in if UserDefaults.standard.bool(forKey: "mobileNasEnabled") { self?.connectNAS() } } } }
 }

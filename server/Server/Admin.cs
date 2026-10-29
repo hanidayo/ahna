@@ -18,6 +18,15 @@ sealed class DeviceRecord
     public Dictionary<string, long> Days { get; set; } = new();
 }
 
+/// 전체 공지. 기기는 연결할 때 받아 가서 읽지 않은 공지를 띄우고, 읽으면 알려 줍니다(Reads).
+sealed class Announcement
+{
+    public string Id { get; set; } = "";
+    public string Text { get; set; } = "";
+    public DateTimeOffset Created { get; set; }
+    public Dictionary<string, DateTimeOffset> Reads { get; set; } = new();
+}
+
 sealed class AdminData
 {
     /// 전체 초기화할 때마다 1씩 올라갑니다.
@@ -27,6 +36,7 @@ sealed class AdminData
     /// 한도를 넘으면 그날은 서버를 통한 파일 전송을 막습니다(false면 알림만).
     public bool Enforce { get; set; }
     public Dictionary<string, DeviceRecord> Devices { get; set; } = new();
+    public List<Announcement> Notices { get; set; } = new();
 }
 
 sealed class AdminStore
@@ -102,6 +112,21 @@ sealed class AdminStore
     public bool SetBlocked(string id, bool blocked) { lock (gate) { if (!data.Devices.TryGetValue(id, out var d)) return false; d.Blocked = blocked; dirty = true; } Save(true); return true; }
     public bool Reset(string id) { lock (gate) { if (!data.Devices.TryGetValue(id, out var d)) return false; d.Gen++; dirty = true; } Save(true); return true; }
     public bool Hide(string id) { lock (gate) { if (!data.Devices.TryGetValue(id, out var d)) return false; d.Hidden = true; dirty = true; } Save(true); return true; }
+    // 공지: 30일이 지나면 서버에서도 지웁니다(기기에서는 읽고 3일 뒤 사라짐).
+    static readonly TimeSpan NoticeLife = TimeSpan.FromDays(30);
+    void PruneNotices() { if (data.Notices.RemoveAll(n => DateTimeOffset.UtcNow - n.Created > NoticeLife) > 0) dirty = true; }
+    public string Announce(string text)
+    {
+        var id = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(6)).ToLowerInvariant();
+        lock (gate) { PruneNotices(); data.Notices.Insert(0, new Announcement { Id = id, Text = text, Created = DateTimeOffset.UtcNow }); if (data.Notices.Count > 30) data.Notices.RemoveRange(30, data.Notices.Count - 30); dirty = true; }
+        Save(true); return id;
+    }
+    public bool RemoveNotice(string id) { bool removed; lock (gate) { removed = data.Notices.RemoveAll(n => n.Id == id) > 0; dirty |= removed; } if (removed) Save(true); return removed; }
+    public object[] Notices() { lock (gate) { PruneNotices(); return data.Notices.Select(n => (object)new { id = n.Id, text = n.Text, created = n.Created.ToUnixTimeSeconds() }).ToArray(); } }
+    public void ReadNotice(string id, string device)
+    {
+        lock (gate) { var n = data.Notices.FirstOrDefault(x => x.Id == id); if (n is null || n.Reads.ContainsKey(device) || n.Reads.Count >= 2000) return; n.Reads[device] = DateTimeOffset.UtcNow; dirty = true; }
+    }
     public void ResetAll() { lock (gate) { data.Epoch++; dirty = true; } Save(true); }
 
     public object Snapshot(Func<string, bool> online)
@@ -110,8 +135,14 @@ sealed class AdminStore
         {
             var today = DateTime.Now.Date;
             long Sum(DeviceRecord d, int days) => d.Days.Where(x => DateTime.TryParseExact(x.Key, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var day) && (today - day).TotalDays < days).Sum(x => x.Value);
+            PruneNotices();
+            var all = data.Devices.Values.ToArray();
             return new
             {
+                total = new { today = all.Sum(d => Sum(d, 1)), week = all.Sum(d => Sum(d, 7)), month = all.Sum(d => Sum(d, 30)) },
+                // 최근 7일 날짜별 합계(오래된 날부터)
+                days = Enumerable.Range(0, 7).Reverse().Select(back => { var key = today.AddDays(-back).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture); return new { day = key, bytes = all.Sum(d => d.Days.GetValueOrDefault(key)) }; }).ToArray(),
+                notices = data.Notices.Select(n => new { id = n.Id, text = n.Text, created = n.Created, reads = n.Reads.Count }).ToArray(),
                 limitGB = data.LimitGB,
                 enforce = data.Enforce,
                 epoch = data.Epoch,

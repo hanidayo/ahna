@@ -31,7 +31,7 @@ def api(path, body=None):
 
 async def control(token, cid, notices=True):
     headers = {"Authorization": "Bearer " + token, "X-Ahna-Computer": cid, "X-Ahna-Name": urllib.parse.quote("테스트 PC")}
-    if notices: headers["X-Ahna-Features"] = "notice"
+    if notices: headers["X-Ahna-Features"] = "notice,notices"
     ws = await websockets.connect(WS + "/_bridge/control", additional_headers=headers)
     await ws.send(json.dumps({"type": "ping"}))
     return ws
@@ -60,6 +60,20 @@ async def main():
 
     r = api(f"/api/device/{cid}/notice", {"text": "안녕하세요"}); check(r.ok and r.json()["delivered"], "알림 보내기")
     n = await notice(ws); check(n["type"] == "notice" and n["action"] == "message" and "안녕하세요" in n["text"], "앱이 알림 받음")
+
+    # 전체 공지: 만들면 온라인 기기에 "notices" 알림 → 기기가 받아 가서 읽음 표시
+    r = api("/api/notices", {"text": "점검 안내\n오늘 밤 12시"}); check(r.ok, "공지 보내기"); nid = r.json()["id"]
+    n = await notice(ws); check(n["action"] == "notices", "공지 알림")
+    auth = {"Authorization": "Bearer " + token}
+    lst = requests.get(BASE + "/_ahna/notices", headers=auth).json()["notices"]
+    check(lst and lst[0]["id"] == nid and lst[0]["text"] == "점검 안내\n오늘 밤 12시" and isinstance(lst[0]["created"], int), "기기가 공지 받기")
+    check(requests.get(BASE + "/_ahna/notices").status_code == 401, "공지는 연결한 기기만")
+    check(requests.post(f"{BASE}/_ahna/notices/{nid}/read", headers=auth).ok, "읽음 알리기")
+    state = api("/api/state").json()
+    check(state["notices"][0]["reads"] == 1 and "total" in state and len(state["days"]) == 7, "관리자 화면에 읽음 수·전체 사용량")
+    check(api(f"/api/notices/{nid}/delete", {}).ok, "공지 지우기")
+    n = await notice(ws); check(n["action"] == "notices", "지운 뒤 다시 받기 알림")
+    check(requests.get(BASE + "/_ahna/notices", headers=auth).json()["notices"] == [], "지운 공지는 사라짐")
 
     # 하루 한도 0.1 GB, 넘으면 막기 → 근처 기기로 맡기기(drop)로 110 MB 올려 한도를 넘김
     check(api("/api/settings", {"limitGB": 0.1, "enforce": True}).ok, "한도 저장")

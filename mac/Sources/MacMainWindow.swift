@@ -510,6 +510,21 @@ private struct MacPendingItem: Identifiable {
                 .accessibilityLabel("버전 " + AppUpdater.currentVersion)
             MacNASPill(status: (!receiver.remoteStatus.hasPrefix("서버 연결됨") && client.connections.contains(where: { $0.state != nil })) ? "서버 연결됨" : receiver.remoteStatus).padding(.leading, 6)
             Spacer(minLength: 12)
+            if !receiver.announcements.isEmpty {
+                Button(action: { receiver.showNotices = true }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: receiver.unreadNotices > 0 ? "bell.badge.fill" : "bell")
+                        Text("공지")
+                        if receiver.unreadNotices > 0 {
+                            Text("\(receiver.unreadNotices)").font(.system(size: 11, weight: .bold)).foregroundColor(.white)
+                                .padding(.horizontal, 6).frame(minWidth: 18, minHeight: 18).background(Capsule().fill(Color.red))
+                        }
+                    }
+                }
+                .buttonStyle(MacButtonStyle(kind: .secondary, height: 30, fontSize: 13))
+                .help(receiver.unreadNotices > 0 ? "읽지 않은 공지 \(receiver.unreadNotices)개" : "공지")
+                .sheet(isPresented: $receiver.showNotices) { MacNoticesView(receiver: receiver) }
+            }
             Button(action: { setOptions(!showOptions) }) {
                 HStack(spacing: 6) {
                     Image(systemName: "sidebar.right")
@@ -1203,5 +1218,43 @@ struct MacMeaningBanner: View {
         .padding(32)
         .frame(width: 400)
         .background(MacTheme.bg)
+    }
+}
+
+// MARK: - 서버 관리자 공지
+
+@MainActor struct MacNoticesView: View {
+    @ObservedObject var receiver: MacReceiverModel
+    @Environment(\.dismiss) private var dismiss
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("공지").font(.system(size: 17, weight: .bold))
+            ScrollView {
+                VStack(spacing: 10) {
+                    ForEach(receiver.announcements) { note in
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(note.text).font(.system(size: 14)).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            HStack {
+                                Text(note.created.formatted(date: .abbreviated, time: .shortened) + (note.read ? " · 읽음 · 3일 뒤 사라짐" : " · 읽지 않음"))
+                                    .font(.system(size: 12)).foregroundColor(MacTheme.faint)
+                                Spacer()
+                                if note.read {
+                                    Button("삭제") { receiver.deleteAnnouncement(note.id) }.buttonStyle(MacButtonStyle(kind: .secondary, height: 26, fontSize: 12))
+                                } else {
+                                    Button("읽음") { receiver.readAnnouncement(note.id) }.buttonStyle(MacButtonStyle(kind: .primary, height: 26, fontSize: 12))
+                                }
+                            }
+                        }
+                        .padding(14)
+                        .background(RoundedRectangle(cornerRadius: 10).fill(MacTheme.surface))
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(note.read ? MacTheme.border : MacTheme.accent, lineWidth: 1))
+                    }
+                }
+            }
+            .frame(maxHeight: 420)
+            HStack { Spacer(); Button("닫기") { dismiss() }.buttonStyle(MacButtonStyle(kind: .secondary, height: 30, fontSize: 13)).keyboardShortcut(.cancelAction) }
+        }
+        .padding(22).frame(width: 460)
     }
 }

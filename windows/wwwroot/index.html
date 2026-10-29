@@ -6,6 +6,7 @@
   <span id="versionChip" class="versionChip" hidden></span>
   <span class="status"><i aria-hidden="true"></i><span id="deviceLabel">연결 대기 중</span></span>
   <div class="topActions whenPaired">
+    <button id="noticeBell" type="button" class="btn headBtn bell" aria-haspopup="dialog" title="공지" hidden><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>공지<span id="noticeCount" class="bellCount" hidden></span></button>
     <button id="settings" type="button" class="btn headBtn" aria-haspopup="dialog" aria-controls="drawer" aria-expanded="false" hidden><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>옵션</button>
     <button id="logout" type="button" class="btn headBtn btnClose" title="이 화면의 연결을 끊습니다"><span class="xDot" aria-hidden="true"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></span>연결 해제</button>
   </div>
@@ -183,6 +184,7 @@
   </div>
 </aside>
 
+<dialog id="noticeDialog"><h2>공지</h2><div id="noticeList" class="noticeList"></div><div class="actions end"><button id="closeNotice" type="button" class="btn">닫기</button></div></dialog>
 <dialog id="clipboardDialog"><h2>받은 글자</h2><textarea id="receivedClipboard" rows="9" readonly aria-label="받은 글자"></textarea><div class="actions end"><button id="copyClipboard" type="button" class="btn primary">복사</button><button id="closeClipboard" type="button" class="btn">닫기</button></div></dialog>
 <div id="dropOverlay" class="dropOverlay" aria-hidden="true" hidden><div class="dropOverlayCard"><span class="dropIcon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg></span><strong id="dropOverlayText">놓으면 보냅니다</strong><small id="dropOverlayHint">파일당 최대 4 GiB · 폴더는 ‘보낼 파일이나 폴더를 선택하세요’로 고르세요</small></div></div>
 <div id="message" role="status" aria-live="polite" hidden></div>

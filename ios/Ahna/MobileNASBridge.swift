@@ -12,6 +12,8 @@ final class MobileNASBridge: @unchecked Sendable {
     var platform = "iPhone"
     /// 서버가 보낸 알림(action: limit·message·rejoin·blocked, text)
     var notice: (@Sendable (String, String) -> Void)?
+    /// 서버에 연결될 때마다(공지를 다시 받아 갈 때)
+    var connected: (@Sendable () -> Void)?
     private let session: URLSession
     private let gate = NSLock()
     private var sockets: [URLSessionWebSocketTask] = []
@@ -31,7 +33,7 @@ final class MobileNASBridge: @unchecked Sendable {
         var request = URLRequest(url: parts.url!); request.setValue("Bearer " + key, forHTTPHeaderField: "Authorization")
         if control {
             request.setValue(host.identity, forHTTPHeaderField: "X-Ahna-Computer")
-            request.setValue("notice", forHTTPHeaderField: "X-Ahna-Features")
+            request.setValue("notice,notices", forHTTPHeaderField: "X-Ahna-Features")
             request.setValue(host.name.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? "", forHTTPHeaderField: "X-Ahna-Name")
             request.setValue(platform, forHTTPHeaderField: "X-Ahna-Platform")
             request.setValue(SHA256.hash(data: Data(host.pin.utf8)).map { String(format: "%02X", $0) }.joined(), forHTTPHeaderField: "X-Ahna-Pin-Hash")
@@ -51,7 +53,7 @@ final class MobileNASBridge: @unchecked Sendable {
     }
     private func connect() async throws {
         changed("서버 연결 중…"); let control = try socket("/_bridge/control", control: true); defer { remove(control) }
-        try await control.send(.string("{\"type\":\"ping\"}")); changed("서버 연결됨 · 원격 전송 가능")
+        try await control.send(.string("{\"type\":\"ping\"}")); changed("서버 연결됨 · 원격 전송 가능"); connected?()
         let ping = Task { do { while !Task.isCancelled { try await Task.sleep(nanoseconds: 15_000_000_000); try await control.send(.string("{\"type\":\"ping\"}")) } } catch { control.cancel(with: .goingAway, reason: nil) } }; defer { ping.cancel() }
         while !Task.isCancelled {
             let message = try await json(control)

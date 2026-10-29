@@ -40,10 +40,14 @@ internal sealed class TrayContext : ApplicationContext
 		updateNotification = false;
 		infoNotification = false;
 		clipboardNotification = false;
+		noticeNotification = false;
 		tray.ShowBalloonTip(5000, title, text, icon);
 	}
 
 	private bool clipboardNotification;
+
+	// 공지 알림을 누르면 아나 창을 열어 공지를 보여 줍니다.
+	private bool noticeNotification;
 
 	// 근처 기기 · QR (1.2): Bluetooth LE 근처 기기, QR 창, 받기 확인 창
 	private readonly NearbyService nearby;
@@ -212,6 +216,7 @@ internal sealed class TrayContext : ApplicationContext
 					trayContext.updateNotification = installOnClick;
 					trayContext.infoNotification = !installOnClick;
 					trayContext.clipboardNotification = false;
+					trayContext.noticeNotification = false;
 					trayContext.tray.ShowBalloonTip(installOnClick ? 15000 : 5000, title, text, ToolTipIcon.Info);
 				})
 			};
@@ -279,6 +284,11 @@ internal sealed class TrayContext : ApplicationContext
 			{
 				trayContext.ShowClipboard(received: true);
 			}
+			else if (trayContext.noticeNotification)
+			{
+				trayContext.noticeNotification = false;
+				Program.Open(trayContext.server.OwnerUrl);
+			}
 			else if (trayContext.nearbyNotification)
 			{
 				trayContext.nearbyNotification = false;
@@ -300,6 +310,7 @@ internal sealed class TrayContext : ApplicationContext
 				{
 					trayContext.nearbyNotification = false;
 					trayContext.clipboardNotification = false;
+					trayContext.noticeNotification = false;
 					trayContext.updateNotification = false;
 					trayContext.infoNotification = false;
 					trayContext.tray.ShowBalloonTip(4000, "아나 · 파일 수신", (text.Length > 200) ? text.Substring(0, 200) : text, ToolTipIcon.Info);
@@ -321,6 +332,16 @@ internal sealed class TrayContext : ApplicationContext
 		server.ClipboardReceived += (string sender) =>
 		{
 			Notify("아나 · 클립보드 수신", sender + "에서 글자가 도착했습니다. 알림을 눌러 확인하고 복사하세요.", recipientSaved: false, clipboard: true);
+		};
+		// 서버 관리자 공지: 새로 받은 읽지 않은 공지를 알리고, 누르면 아나 창에서 공지를 엽니다.
+		server.NewAnnouncements += (TransferServer.Announcement[] list) =>
+		{
+			trayContext.dispatcher.BeginInvoke(() =>
+			{
+				string text = list.Length == 1 ? list[0].Text : (list.Length + "개의 새 공지가 있습니다. 눌러서 확인하세요.");
+				trayContext.ShowTip("아나 · 공지", (text.Length > 200) ? text.Substring(0, 200) : text, ToolTipIcon.Info);
+				trayContext.noticeNotification = true;
+			});
 		};
 		// 서버 관리자 알림: 사용량 한도, 관리자 메시지, 초기화(초대 코드 다시 입력), 차단
 		server.ServerNotice += (string action, string text) =>
@@ -773,6 +794,7 @@ internal sealed class TrayContext : ApplicationContext
 		updateNotification = false;
 		infoNotification = false;
 		clipboardNotification = false;
+		noticeNotification = false;
 		nearbyNotification = true;
 		tray.ShowBalloonTip(8000, "아나 · 근처 기기", (text.Length > 220) ? text.Substring(0, 220) : text, ToolTipIcon.Info);
 	}

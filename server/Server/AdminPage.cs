@@ -23,10 +23,19 @@ input[type=password],input[type=number],input[type=text]{font:inherit;padding:8p
 @media(max-width:640px){.dev{grid-template-columns:1fr}.acts{justify-content:flex-start}}
 #login{max-width:360px;margin:12vh auto}#login input{width:100%;margin:16px 0 12px}
 #msg{min-height:20px;margin-top:8px}.err{color:var(--bad)}
+.bars{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;align-items:end;height:120px}.bar{display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%;gap:4px;font-size:12px;color:var(--m)}
+.bar i{display:block;width:100%;max-width:44px;background:var(--a);border-radius:6px 6px 2px 2px;min-height:2px}
+.note{border-top:1px solid var(--b);padding:12px 0;display:grid;grid-template-columns:1fr auto;gap:12px}.note p{margin:0 0 4px;white-space:pre-wrap}
 </style></head><body><main>
 <section id="login" class="card" hidden><h1>아나 관리</h1><form id="loginForm"><input id="pw" type="password" autocomplete="current-password" placeholder="관리자 비밀번호" required><button class="primary" style="width:100%">로그인</button></form><div id="loginMsg" class="muted"></div></section>
 <section id="app" hidden>
 <header><h1>아나 관리</h1><span class="sp"></span><button id="refresh">새로고침</button><button id="logout">로그아웃</button></header>
+<div class="card"><h2>전체 사용량</h2>
+<div class="use" id="total" style="font-size:15px;margin-bottom:14px"></div><div id="bars" class="bars"></div></div>
+<div class="card"><h2>공지</h2>
+<p class="muted" style="margin-top:0">모든 기기에 보냅니다. 오프라인인 기기는 다음에 연결할 때 받습니다. 앱에서 [읽음]을 누를 때까지 읽지 않은 공지로 남고, 읽은 공지는 3일 뒤 앱에서 사라집니다. 여기서 지우면 모든 기기에서 사라집니다.</p>
+<textarea id="noticeText" rows="3" maxlength="1000" placeholder="공지 내용" style="width:100%;font:inherit;padding:8px 10px;border:1px solid var(--b);border-radius:8px;background:var(--s);color:var(--t);resize:vertical"></textarea>
+<div class="row" style="margin:8px 0 4px"><button id="sendNotice" class="primary">공지 보내기</button></div><div id="notices"></div></div>
 <div class="card"><h2>하루 사용량 한도</h2>
 <p class="muted">기기 하나가 하루에 서버를 거쳐 주고받는 양입니다(그 기기가 받는 쪽인 전송 + 근처 기기로 맡긴 파일). 한도를 넘으면 그 기기 앱에 알림이 갑니다. 날짜는 서버 시간 0시에 바뀝니다.</p>
 <div class="row"><label>한도 <input id="limit" type="number" min="0" step="0.5" style="width:110px"> GB <span class="muted">(0 = 제한 없음)</span></label>
@@ -50,6 +59,10 @@ let state=null;
 function show(on){$('#login').hidden=on;$('#app').hidden=!on}
 async function load(){try{state=await api('/api/state');show(true);render()}catch(e){if($('#app').hidden)return;say(e.message,true)}}
 function render(){
+  const t=state.total;$('#total').innerHTML=`<span>오늘 <b>${size(t.today)}</b></span><span>7일 <b>${size(t.week)}</b></span><span>30일 <b>${size(t.month)}</b></span><span>기기 <b>${state.devices.length}</b>대 · 온라인 <b>${state.devices.filter(d=>d.online).length}</b>대</span>`;
+  const peak=Math.max(1,...state.days.map(d=>d.bytes));
+  $('#bars').innerHTML=state.days.map(d=>`<div class="bar" title="${d.day} · ${size(d.bytes)}"><span>${d.bytes?size(d.bytes):''}</span><i style="height:${Math.round(d.bytes/peak*80)}%"></i><span>${Number(d.day.slice(8))}일</span></div>`).join('');
+  $('#notices').innerHTML=state.notices.map(n=>`<div class="note"><div><p>${esc(n.text)}</p><span class="muted">${new Date(n.created).toLocaleString('ko-KR',{month:'numeric',day:'numeric',hour:'numeric',minute:'2-digit'})} · 읽음 ${n.reads}대</span></div><div><button class="danger" data-del="${n.id}">지우기</button></div></div>`).join('');
   $('#limit').value=state.limitGB;$('#enforce').checked=state.enforce;
   const limit=state.limitGB*1073741824;
   $('#count').textContent=state.devices.length+'대 · 온라인 '+state.devices.filter(d=>d.online).length+'대';
@@ -70,6 +83,8 @@ $('#list').addEventListener('click',async e=>{
   b.disabled=true;
   try{const r=await api('/api/device/'+id+'/'+a,body);say(a==='notice'?(r.delivered?'알림을 보냈습니다.':'기기가 알림을 받을 수 없습니다(오프라인이거나 예전 버전).'):'완료했습니다.',a==='notice'&&!r.delivered);await load()}catch(err){say(err.message,true);b.disabled=false}
 });
+$('#sendNotice').onclick=async()=>{const text=$('#noticeText').value.trim();if(!text)return;try{await api('/api/notices',{text});$('#noticeText').value='';say('공지를 보냈습니다.');await load()}catch(e){say(e.message,true)}};
+$('#notices').addEventListener('click',async e=>{const b=e.target.closest('button[data-del]');if(!b||!confirm('이 공지를 지울까요? 모든 기기에서 사라집니다.'))return;try{await api('/api/notices/'+b.dataset.del+'/delete',{});await load()}catch(err){say(err.message,true)}});
 $('#saveSettings').onclick=async()=>{try{await api('/api/settings',{limitGB:Number($('#limit').value)||0,enforce:$('#enforce').checked});say('저장했습니다.');await load()}catch(e){say(e.message,true)}};
 $('#resetAll').onclick=async()=>{if(prompt('모든 기기를 초기화하려면 "초기화"라고 입력하세요.')!=='초기화')return;try{await api('/api/reset-all',{});say('모든 기기를 초기화했습니다.');await load()}catch(e){say(e.message,true)}};
 $('#refresh').onclick=load;

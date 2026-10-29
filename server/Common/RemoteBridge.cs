@@ -29,6 +29,8 @@ public sealed class RemoteBridge : IAsyncDisposable
     public string Platform { get; set; } = "";
     /// 서버가 보낸 알림(action: limit·message·rejoin·blocked, text)
     public event Action<string,string>? Notice;
+    /// 서버에 연결될 때마다(공지를 다시 받아 갈 때)
+    public event Action? Connected;
     public RemoteBridge(Uri local,string cache,Func<BridgeConfig?> configuration,bool testHttp=false,string? computerId=null,Func<string>? pairingPin=null)
     {
         if(!local.IsLoopback || local.Scheme!="http")throw new ArgumentException("Local endpoint must be loopback HTTP.");
@@ -73,12 +75,13 @@ public sealed class RemoteBridge : IAsyncDisposable
         using var linked=CancellationTokenSource.CreateLinkedTokenSource(ct);
         using var control=new ClientWebSocket();control.Options.SetRequestHeader("Authorization","Bearer "+key);control.Options.KeepAliveInterval=TimeSpan.FromSeconds(15);
         control.Options.SetRequestHeader("X-Ahna-Computer",computerId);
-        control.Options.SetRequestHeader("X-Ahna-Features","notice");
+        control.Options.SetRequestHeader("X-Ahna-Features","notice,notices");
         if(DeviceName is not null)control.Options.SetRequestHeader("X-Ahna-Name",Uri.EscapeDataString(DeviceName()));
         if(Platform.Length>0)control.Options.SetRequestHeader("X-Ahna-Platform",Platform);
         if(pairingPin is not null)control.Options.SetRequestHeader("X-Ahna-Pin-Hash",Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(pairingPin()))));
         await control.ConnectAsync(SocketUri(endpoint,"/_bridge/control"),linked.Token);
         status="서버 연결됨 · 원격 전송 가능";
+        try{Connected?.Invoke();}catch{}
         var jobs=new ConcurrentDictionary<int,Task>();int sequence=0;
         var ping=Task.Run(async()=>{try{while(!linked.IsCancellationRequested){await Wire.SendJson(control,new{type="ping"},linked.Token);await Task.Delay(15000,linked.Token);}}catch{linked.Cancel();}},linked.Token);
         try

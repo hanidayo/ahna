@@ -209,7 +209,7 @@ public class MainActivity extends Activity {
         ui = new Ui(this);
         columns = columnsFor(prefs.getString("layoutMode", "auto"), getResources().getConfiguration().screenWidthDp);
         tablet = columns >= 2;
-        nasPills.clear(); headers.clear(); bodies.clear();
+        nasPills.clear(); headers.clear(); bodies.clear(); noticeBells.clear();
         deviceLine = null; nearBox = null;
         if (nearby != null) { nearby.nearBox = null; nearby.optionsBox = null; }
         targetPrint = ""; connectionPrint = ""; inboxPrint = "";
@@ -342,6 +342,7 @@ public class MainActivity extends Activity {
             row.addView(v, ui.lp(-2, -2, 0, 0, gap, 0));
         }
         if (!tablet) row.addView(ui.space(0, 0), ui.flex(1));
+        row.addView(noticeBell(), ui.lp(-2, 32, 0, 0, 8, 0));
         row.addView(nasPill(), ui.lp(-2, 28));
         if (tablet) {
             row.addView(ui.space(0, 0), ui.flex(1));
@@ -1468,9 +1469,109 @@ public class MainActivity extends Activity {
         setRelayText(null);
         relay = new RelayBridge(server, nasAddress(), keyFromSaved(), this::setRelayText);
         relay.notice = (action, text) -> runOnUiThread(() -> serverNotice(action, text));
+        relay.connected = this::refreshNotices;
+    }
+
+    // ── 서버 관리자 공지 ──
+    // 서버에 연결할 때마다 받아 오고, 읽음·삭제는 이 기기에 저장합니다. 읽은 공지는 3일 뒤 보이지 않습니다.
+    final List<TextView> noticeBells = new ArrayList<>();
+    final Set<String> poppedNotices = new HashSet<>();
+    volatile JSONArray serverNotices = new JSONArray();
+    android.app.AlertDialog noticeDialog;
+    static final long READ_NOTICE_LIFE = 3L * 24 * 60 * 60 * 1000;
+    JSONObject noticeRead() { try { return new JSONObject(prefs.getString("noticeRead", "{}")); } catch (Exception e) { return new JSONObject(); } }
+    JSONArray noticeDeleted() { try { return new JSONArray(prefs.getString("noticeDeleted", "[]")); } catch (Exception e) { return new JSONArray(); } }
+    boolean deleted(JSONArray list, String id) { for (int i = 0; i < list.length(); i++) if (id.equals(list.optString(i))) return true; return false; }
+    List<JSONObject> announcements() {
+        List<JSONObject> out = new ArrayList<>(); JSONObject read = noticeRead(); JSONArray gone = noticeDeleted(); long now = System.currentTimeMillis();
+        JSONArray list = serverNotices;
+        for (int i = 0; i < list.length(); i++) {
+            JSONObject n = list.optJSONObject(i); if (n == null) continue; String id = n.optString("id");
+            if (deleted(gone, id) || read.has(id) && now - read.optLong(id) > READ_NOTICE_LIFE) continue;
+            try { out.add(new JSONObject().put("id", id).put("text", n.optString("text")).put("created", n.optLong("created")).put("read", read.has(id))); } catch (Exception ignored) {}
+        }
+        return out;
+    }
+    int unreadNotices() { int c = 0; for (JSONObject n : announcements()) if (!n.optBoolean("read")) c++; return c; }
+    TextView noticeBell() {
+        TextView b = ui.text("", 13, ui.text, Ui.MEDIUM);
+        b.setGravity(Gravity.CENTER_VERTICAL); b.setPadding(dp(10), 0, dp(10), 0);
+        b.setClickable(true); b.setFocusable(true); b.setOnClickListener(v -> showNotices());
+        noticeBells.add(b); updateNoticeBells(); return b;
+    }
+    void updateNoticeBells() {
+        int all = announcements().size(), unread = unreadNotices();
+        for (TextView b : noticeBells) {
+            b.setVisibility(all == 0 ? View.GONE : View.VISIBLE);
+            b.setText(unread > 0 ? "🔔 공지 " + unread : "🔔 공지");
+            b.setTextColor(unread > 0 ? ui.danger : ui.text);
+            b.setContentDescription(unread > 0 ? "읽지 않은 공지 " + unread + "개" : "공지");
+        }
+    }
+    java.net.HttpURLConnection noticeConnection(String path, String method) throws Exception {
+        String key = keyFromSaved(); if (!Brand.isMemberToken(key)) return null;
+        java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(Brand.SERVER + path).openConnection();
+        c.setConnectTimeout(15000); c.setReadTimeout(20000); c.setRequestMethod(method); c.setRequestProperty("Authorization", "Bearer " + key); return c;
+    }
+    void refreshNotices() {
+        new Thread(() -> {
+            try {
+                java.net.HttpURLConnection c = noticeConnection("/_ahna/notices", "GET"); if (c == null || c.getResponseCode() != 200) return;
+                String text; try (java.io.InputStream in = c.getInputStream()) { java.io.ByteArrayOutputStream b = new java.io.ByteArrayOutputStream(); byte[] buf = new byte[8192]; int n; while ((n = in.read(buf)) > 0 && b.size() < 262144) b.write(buf, 0, n); text = b.toString("UTF-8"); }
+                JSONArray list = new JSONObject(text).optJSONArray("notices"); if (list == null) list = new JSONArray();
+                JSONArray clean = new JSONArray(); Set<String> ids = new HashSet<>();
+                for (int i = 0; i < list.length() && clean.length() < 30; i++) { JSONObject n = list.optJSONObject(i); if (n == null || n.optString("id").isEmpty() || n.optString("text").isEmpty()) continue; clean.put(n); ids.add(n.optString("id")); }
+                JSONArray finalList = clean;
+                runOnUiThread(() -> {
+                    serverNotices = finalList;
+                    // 서버에서 지운 공지의 기록은 정리
+                    JSONObject read = noticeRead(), keep = new JSONObject(); java.util.Iterator<String> it = read.keys();
+                    while (it.hasNext()) { String k = it.next(); if (ids.contains(k)) try { keep.put(k, read.optLong(k)); } catch (Exception ignored) {} }
+                    JSONArray gone = noticeDeleted(), keepGone = new JSONArray(); for (int i = 0; i < gone.length(); i++) if (ids.contains(gone.optString(i))) keepGone.put(gone.optString(i));
+                    prefs.edit().putString("noticeRead", keep.toString()).putString("noticeDeleted", keepGone.toString()).apply();
+                    updateNoticeBells();
+                    // 읽지 않은 새 공지는 한 번 저절로 띄웁니다.
+                    boolean fresh = false; for (JSONObject n : announcements()) if (!n.optBoolean("read") && poppedNotices.add(n.optString("id"))) fresh = true;
+                    if (noticeDialog != null && noticeDialog.isShowing()) showNotices(); else if (fresh) showNotices();
+                });
+            } catch (Exception ignored) {}
+        }).start();
+    }
+    void readNotice(String id) {
+        JSONObject read = noticeRead(); if (read.has(id)) return;
+        try { read.put(id, System.currentTimeMillis()); } catch (Exception ignored) {}
+        prefs.edit().putString("noticeRead", read.toString()).apply();
+        new Thread(() -> { try { java.net.HttpURLConnection c = noticeConnection("/_ahna/notices/" + id + "/read", "POST"); if (c != null) { c.setDoOutput(true); c.setFixedLengthStreamingMode(0); c.getOutputStream().close(); c.getResponseCode(); } } catch (Exception ignored) {} }).start();
+    }
+    void deleteNotice(String id) { JSONArray gone = noticeDeleted(); if (!deleted(gone, id)) gone.put(id); prefs.edit().putString("noticeDeleted", gone.toString()).apply(); }
+    void showNotices() {
+        if (isFinishing()) return;
+        updateNoticeBells();
+        List<JSONObject> list = announcements();
+        if (noticeDialog != null && noticeDialog.isShowing()) noticeDialog.dismiss();
+        if (list.isEmpty()) return;
+        LinearLayout box = ui.column(); box.setPadding(dp(20), dp(8), dp(20), dp(8));
+        java.text.DateFormat format = java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT, java.util.Locale.KOREA);
+        for (JSONObject n : list) {
+            String id = n.optString("id"); boolean read = n.optBoolean("read");
+            LinearLayout item = ui.column(); item.setPadding(0, dp(12), 0, dp(12));
+            TextView body = ui.text(n.optString("text"), 15, ui.text, Ui.REGULAR); body.setTextIsSelectable(true);
+            item.addView(body);
+            LinearLayout meta = ui.row(); meta.setGravity(Gravity.CENTER_VERTICAL);
+            meta.addView(ui.text(format.format(new java.util.Date(n.optLong("created") * 1000)) + (read ? " · 읽음 · 3일 뒤 사라짐" : " · 읽지 않음"), 12, read ? ui.faint : ui.accent, Ui.REGULAR), ui.flex(1));
+            TextView action = ui.text(read ? "삭제" : "읽음", 14, read ? ui.danger : ui.accent, Ui.BOLD);
+            action.setPadding(dp(14), dp(8), dp(4), dp(8)); action.setClickable(true); action.setFocusable(true);
+            action.setOnClickListener(v -> { if (read) deleteNotice(id); else readNotice(id); showNotices(); });
+            meta.addView(action);
+            item.addView(meta, new LinearLayout.LayoutParams(-1, -2));
+            box.addView(item, new LinearLayout.LayoutParams(-1, -2));
+        }
+        android.widget.ScrollView scroll = new android.widget.ScrollView(this); scroll.addView(box);
+        noticeDialog = new android.app.AlertDialog.Builder(this).setTitle("공지").setView(scroll).setPositiveButton("닫기", null).show();
     }
     /** 서버 관리자 알림. 초기화·차단이면 연결 키를 지우고 초대 코드 입력 창을 띄웁니다. */
     void serverNotice(String action, String text) {
+        if ("notices".equals(action)) { refreshNotices(); return; }
         boolean rejoin = "rejoin".equals(action) || "blocked".equals(action);
         if (rejoin) {
             if (relay != null) { relay.close(); relay = null; }

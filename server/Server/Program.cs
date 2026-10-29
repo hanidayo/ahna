@@ -177,7 +177,8 @@ app.MapGet("/_bridge/control",async (HttpContext c)=>
 {
     var member=TokenComputer(c);
     // 알림을 받을 수 있는 앱(X-Ahna-Features: notice)이면, 초기화·차단된 기기에 이유를 알려 주고 닫습니다.
-    var notices=c.Request.Headers["X-Ahna-Features"].ToString().Split(',',StringSplitOptions.TrimEntries).Contains("notice");
+    var features=c.Request.Headers["X-Ahna-Features"].ToString().Split(',',StringSplitOptions.TrimEntries);
+    var notices=features.Contains("notice");
     if(member is null&&!Authorized(c)&&notices&&c.WebSockets.IsWebSocketRequest&&StaleComputer(c) is { } stale)
     {
         using var gone=await c.WebSockets.AcceptWebSocketAsync();
@@ -196,7 +197,7 @@ app.MapGet("/_bridge/control",async (HttpContext c)=>
     string deviceName;try{deviceName=CleanText(Uri.UnescapeDataString(c.Request.Headers["X-Ahna-Name"].ToString()),40);}catch(UriFormatException){deviceName="";}
     if(computer!="legacy")registry.Touch(computer,ClientIp(c),deviceName,CleanText(c.Request.Headers["X-Ahna-Platform"].ToString(),20));
     using var ws=await c.WebSockets.AcceptWebSocketAsync();
-    var bridge=new RelayConnection(computer,ws,c.Request.Headers["X-Ahna-Pin-Hash"].ToString(),notices);
+    var bridge=new RelayConnection(computer,ws,c.Request.Headers["X-Ahna-Pin-Hash"].ToString(),notices,features.Contains("notices"));
     if(!controls.TryAdd(computer,bridge)){ws.Abort();return;}
     try{while(ws.State==WebSocketState.Open){using var idle=CancellationTokenSource.CreateLinkedTokenSource(c.RequestAborted);idle.CancelAfter(TimeSpan.FromSeconds(45));var ping=await Wire.ReadJson<Dictionary<string,string>>(ws,idle.Token);if(ping.GetValueOrDefault("type")!="ping")break;}}
     finally{controls.TryRemove(computer,out _);foreach(var item in pending.Where(p=>ReferenceEquals(p.Value.Bridge,bridge)))if(pending.TryRemove(item.Key,out var job))job.Waiting.TrySetCanceled();}
@@ -400,7 +401,7 @@ void Count(string computer,long bytes)
 }
 async Task<bool> Notice(string computer,string text,string action)
 {
-    if(!controls.TryGetValue(computer,out var r)||!r.Notices)return false;
+    if(!controls.TryGetValue(computer,out var r)||!r.Notices||action=="notices"&&!r.Board)return false;
     try
     {
         using var cts=new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -410,6 +411,11 @@ async Task<bool> Notice(string computer,string text,string action)
     }catch{return false;}
 }
 void Kick(string computer){if(controls.TryGetValue(computer,out var r))try{r.Socket.Abort();}catch{}}
+
+// 전체 공지: 연결한 기기가 받아 갑니다. 새 공지가 생기거나 지워지면 온라인 기기에 "notices" 알림을 보내 다시 받아 가게 합니다.
+app.MapGet("/_ahna/notices",(HttpContext c)=>TokenComputer(c) is null?Results.Unauthorized():Results.Json(new{notices=registry.Notices()}));
+app.MapPost("/_ahna/notices/{id}/read",(string id,HttpContext c)=>{if(TokenComputer(c) is not { } member)return Results.Unauthorized();registry.ReadNotice(id,member);return Results.Ok();});
+async Task BroadcastNotices(){foreach(var id in controls.Keys.Where(k=>k!="legacy").ToArray())await Notice(id,"","notices");}
 
 // 관리자 페이지: .env의 AHNA_ADMIN_PASSWORD 가 있을 때만 열립니다.
 var adminPassword=(Environment.GetEnvironmentVariable("AHNA_ADMIN_PASSWORD")??"").Trim();
@@ -495,6 +501,22 @@ app.MapPost("/_ahna/admin/api/device/{id}/{action}",async (string id,string acti
     }
     await c.Response.WriteAsJsonAsync(new{ok=true});
 });
+app.MapPost("/_ahna/admin/api/notices",async (HttpContext c)=>
+{
+    if(!IsAdmin(c)){c.Response.StatusCode=401;return;}
+    string text="";
+    try{using var doc=await JsonDocument.ParseAsync(c.Request.Body,cancellationToken:c.RequestAborted);text=(doc.RootElement.TryGetProperty("text",out var t)?t.GetString()??"":"").Replace("\r\n","\n").Trim();}catch(JsonException){}
+    text=new string(text.Where(ch=>ch=='\n'||!char.IsControl(ch)).ToArray());
+    if(text.Length is 0 or >1000){c.Response.StatusCode=400;await c.Response.WriteAsJsonAsync(new{error="공지 내용을 1~1000자로 입력하세요."});return;}
+    var id=registry.Announce(text);await BroadcastNotices();
+    await c.Response.WriteAsJsonAsync(new{id});
+});
+app.MapPost("/_ahna/admin/api/notices/{id}/delete",async (string id,HttpContext c)=>
+{
+    if(!IsAdmin(c)){c.Response.StatusCode=401;return;}
+    if(registry.RemoveNotice(id))await BroadcastNotices();
+    await c.Response.WriteAsJsonAsync(new{ok=true});
+});
 app.MapPost("/_ahna/admin/api/reset-all",async (HttpContext c)=>
 {
     if(!IsAdmin(c)){c.Response.StatusCode=401;return;}
@@ -505,7 +527,7 @@ app.MapPost("/_ahna/admin/api/reset-all",async (HttpContext c)=>
 
 await app.RunAsync();
 
-sealed record RelayConnection(string Id,WebSocket Socket,string PinHash,bool Notices=false)
+sealed record RelayConnection(string Id,WebSocket Socket,string PinHash,bool Notices=false,bool Board=false)
 {
     public SemaphoreSlim Send { get; }=new(1,1);
 }

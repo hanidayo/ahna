@@ -134,6 +134,78 @@ public sealed class TransferServer : IAsyncDisposable
         lock (gate) { if (string.IsNullOrEmpty(Settings.RemoteKeyProtected)) return; Settings.RemoteKeyProtected = ""; Settings.RemoteEnabled = false; Util.SaveJson(Path.Combine(data, "settings.json"), Settings); }
         bridge?.Reload();
     }
+    // ── 전체 공지 (서버 관리자) ──
+    // 서버에 연결할 때마다 받아 오고, 읽음·지움은 이 기기에 저장합니다. 읽은 공지는 3일 뒤 보이지 않습니다.
+    public sealed record Announcement(string Id, string Text, DateTimeOffset Created, bool Read);
+    sealed class NoticeState { public Dictionary<string, DateTimeOffset> Read { get; set; } = new(); public HashSet<string> Deleted { get; set; } = new(); }
+    readonly object noticeGate = new();
+    (string Id, string Text, DateTimeOffset Created)[] serverNotices = [];
+    NoticeState? noticeState;
+    readonly HashSet<string> announced = new();
+    static readonly TimeSpan ReadNoticeLife = TimeSpan.FromDays(3);
+    /// 새로 받은 읽지 않은 공지(알림·팝업용, 실행 중 한 번씩)
+    public event Action<Announcement[]>? NewAnnouncements;
+    NoticeState NoticeStore()
+    {
+        if (noticeState is not null) return noticeState;
+        try { var f = Path.Combine(data, "notices.json"); noticeState = File.Exists(f) ? JsonSerializer.Deserialize<NoticeState>(File.ReadAllText(f), Util.Json) ?? new() : new(); }
+        catch { noticeState = new(); }
+        return noticeState;
+    }
+    void SaveNoticeStore() { try { Util.SaveJson(Path.Combine(data, "notices.json"), noticeState); } catch { } }
+    public Announcement[] Announcements()
+    {
+        lock (noticeGate)
+        {
+            var st = NoticeStore(); var now = DateTimeOffset.UtcNow;
+            return serverNotices.Where(n => !st.Deleted.Contains(n.Id) && !(st.Read.TryGetValue(n.Id, out var at) && now - at > ReadNoticeLife))
+                .Select(n => new Announcement(n.Id, n.Text, n.Created, st.Read.ContainsKey(n.Id))).ToArray();
+        }
+    }
+    HttpRequestMessage? NoticeRequest(HttpMethod method, string path)
+    {
+        string key; try { key = string.IsNullOrEmpty(Settings.RemoteKeyProtected) ? "" : RemoteKey.Unprotect(Settings.RemoteKeyProtected); } catch { return null; }
+        if (!Ahna.Remote.Brand.IsMemberToken(key) || string.IsNullOrEmpty(Settings.RemoteUrl)) return null;
+        var request = new HttpRequestMessage(method, Settings.RemoteUrl.TrimEnd('/') + path);
+        request.Headers.TryAddWithoutValidation("Authorization", "Bearer " + key); return request;
+    }
+    public async Task RefreshAnnouncements()
+    {
+        try
+        {
+            using var request = NoticeRequest(HttpMethod.Get, "/_ahna/notices"); if (request is null) return;
+            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
+            using var response = await http.SendAsync(request);
+            if (!response.IsSuccessStatusCode) return;
+            using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            var list = doc.RootElement.GetProperty("notices").EnumerateArray()
+                .Select(n => (Id: n.GetProperty("id").GetString() ?? "", Text: n.GetProperty("text").GetString() ?? "", Created: DateTimeOffset.FromUnixTimeSeconds(n.GetProperty("created").GetInt64())))
+                .Where(n => n.Id.Length is > 0 and <= 32 && n.Text.Length > 0).Take(30).ToArray();
+            Announcement[] fresh;
+            lock (noticeGate)
+            {
+                serverNotices = list;
+                var st = NoticeStore(); var ids = list.Select(n => n.Id).ToHashSet();
+                // 서버에서 지운 공지의 기록은 정리
+                if (st.Read.Keys.Any(k => !ids.Contains(k)) || st.Deleted.Any(k => !ids.Contains(k)))
+                { foreach (var k in st.Read.Keys.Where(k => !ids.Contains(k)).ToArray()) st.Read.Remove(k); st.Deleted.RemoveWhere(k => !ids.Contains(k)); SaveNoticeStore(); }
+                fresh = list.Where(n => !st.Read.ContainsKey(n.Id) && !st.Deleted.Contains(n.Id) && announced.Add(n.Id)).Select(n => new Announcement(n.Id, n.Text, n.Created, false)).ToArray();
+            }
+            if (fresh.Length > 0) try { NewAnnouncements?.Invoke(fresh); } catch { }
+        }
+        catch { }
+    }
+    public void ReadAnnouncement(string id)
+    {
+        lock (noticeGate) { var st = NoticeStore(); if (!serverNotices.Any(n => n.Id == id) || st.Read.ContainsKey(id)) return; st.Read[id] = DateTimeOffset.UtcNow; SaveNoticeStore(); }
+        _ = Task.Run(async () =>
+        {
+            try { using var request = NoticeRequest(HttpMethod.Post, "/_ahna/notices/" + Uri.EscapeDataString(id) + "/read"); if (request is null) return; using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(20) }; using var response = await http.SendAsync(request); }
+            catch { }
+        });
+    }
+    /// 읽은 공지 지우기
+    public void DeleteAnnouncement(string id) { lock (noticeGate) { var st = NoticeStore(); if (!st.Read.ContainsKey(id) || !st.Deleted.Add(id)) return; SaveNoticeStore(); } }
     public void ClearHistory() { lock(gate) { history.Clear(); Util.SaveJson(Path.Combine(data,"history.json"),history); } }
     public HistoryItem[] HistorySnapshot() { lock(gate) return history.Take(20).ToArray(); }
     public void SaveSettings(Preferences settings)
@@ -259,7 +331,7 @@ public sealed class TransferServer : IAsyncDisposable
             var items = shares.Values.Where(x => (d.Owner || x.Target == d.Id) && now - x.Created < TimeSpan.FromHours(24)).OrderByDescending(x => x.Created).Select(x => new { x.Id, x.Name, x.Bytes, x.Target }).ToArray();
             HistoryItem[] recent; lock (gate) recent = history.Where(h => d.Owner || h.Session == d.Id).Take(20).ToArray();
             var clipboard = ClipboardInbox(d.Owner ? "windows" : d.Id).Select(x => new { x.Id, x.Sender, x.Bytes, x.Created });
-            return Results.Json(new { id = d.Id, name = d.Name, version = AppVersion, hostName = Environment.MachineName, platform = OperatingSystem.IsMacOS()?"Mac":"Windows", owner = d.Owner, pin = d.Owner ? Pin : null, urls = d.Owner ? Addresses.Concat(Settings.RemoteEnabled?new[]{Settings.RemoteUrl}:[]).Distinct(StringComparer.OrdinalIgnoreCase).ToArray() : [], remoteStatus = d.Owner ? RemoteStatus : null, savePath = d.Owner ? Settings.SavePath : null, devices, items, clipboard, maxClipboardBytes = MaxClipboardBytes, history = recent, maxFile = MaxFile, outbound = d.Owner ? ExternalDevices?.Snapshot() : null, peers });
+            return Results.Json(new { id = d.Id, name = d.Name, version = AppVersion, hostName = Environment.MachineName, platform = OperatingSystem.IsMacOS()?"Mac":"Windows", owner = d.Owner, pin = d.Owner ? Pin : null, urls = d.Owner ? Addresses.Concat(Settings.RemoteEnabled?new[]{Settings.RemoteUrl}:[]).Distinct(StringComparer.OrdinalIgnoreCase).ToArray() : [], remoteStatus = d.Owner ? RemoteStatus : null, savePath = d.Owner ? Settings.SavePath : null, devices, items, clipboard, maxClipboardBytes = MaxClipboardBytes, history = recent, maxFile = MaxFile, outbound = d.Owner ? ExternalDevices?.Snapshot() : null, peers, announcements = d.Owner ? Announcements() : null });
         });
         app.MapPost("/api/logout", (HttpContext c) => { if (c.Request.Cookies.TryGetValue("ahna", out var t)) sessions.TryRemove(t, out _);SaveNativeSessions(); c.Response.Cookies.Delete("ahna"); return Results.Ok(); });
         app.MapPost("/api/upload", (Delegate)Upload);
@@ -298,6 +370,8 @@ public sealed class TransferServer : IAsyncDisposable
             if (PickRequested is null) return Results.StatusCode(503);
             await PickRequested(request.Target); return Results.Ok();
         });
+        app.MapPost("/api/admin/announcements/{id}/read", (string id, HttpContext c) => { if (Authenticate(c)?.Owner != true) return Results.Unauthorized(); ReadAnnouncement(id); return Results.Ok(); });
+        app.MapPost("/api/admin/announcements/{id}/delete", (string id, HttpContext c) => { if (Authenticate(c)?.Owner != true) return Results.Unauthorized(); DeleteAnnouncement(id); return Results.Ok(); });
         app.MapPost("/api/admin/history/clear", (HttpContext c) => { if(Authenticate(c)?.Owner != true) return Results.Unauthorized(); ClearHistory(); return Results.Ok(); });
         app.MapPost("/api/admin/settings", (HttpContext c) => { if (Authenticate(c)?.Owner != true) return Results.Unauthorized(); SettingsRequested?.Invoke(); return Results.Ok(); });
         app.MapGet("/api/version", () => Results.Json(new { version = AppVersion }));
@@ -541,8 +615,10 @@ public sealed class TransferServer : IAsyncDisposable
         await app.StartAsync();
         bridge=new(new Uri(LocalUrl),Path.Combine(data,"remote-parts"),()=>Settings.RemoteEnabled?new(Settings.RemoteUrl,RemoteKey.Unprotect(Settings.RemoteKeyProtected)):null,computerId:computerId,pairingPin:()=>Pin);
         bridge.DeviceName=()=>GuestOwnerName; bridge.Platform=OperatingSystem.IsMacOS()?"Mac":"Windows";
+        bridge.Connected+=()=>{_=RefreshAnnouncements();};
         bridge.Notice+=(action,text)=>
         {
+            if(action=="notices"){_=RefreshAnnouncements();return;}
             if(action is "rejoin" or "blocked")ForgetServer();
             try { ServerNotice?.Invoke(action, text); } catch { }
         };

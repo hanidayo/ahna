@@ -214,7 +214,41 @@ function renderReceived(s) {
   }
   if (!received.length) $('received').append(node('div', '아직 도착한 파일이 없습니다.', 'empty'));
   $('savePath').textContent = '받은 파일은 ' + s.savePath + '에 저장됩니다.';
+  renderNotices(s.owner ? (s.announcements || []) : []);
 }
+// 서버 관리자 공지: 읽지 않은 공지는 이 창에서 한 번 저절로 열고, 상단 [공지]로 언제든 다시 볼 수 있습니다.
+let notices = [];
+function shownNotices() { try { return JSON.parse(sessionStorage.getItem('ahnaNoticeShown') || '[]'); } catch { return []; } }
+let noticeKey = '';
+function renderNotices(list) {
+  const key = JSON.stringify(list); if (key === noticeKey) return; noticeKey = key;
+  notices = list;
+  const unread = list.filter(n => !n.read);
+  $('noticeBell').hidden = list.length === 0;
+  $('noticeCount').hidden = unread.length === 0; $('noticeCount').textContent = unread.length;
+  $('noticeBell').title = unread.length ? '읽지 않은 공지 ' + unread.length + '개' : '공지';
+  if ($('noticeDialog').open) fillNotices();
+  const shown = shownNotices(), fresh = unread.filter(n => !shown.includes(n.id));
+  if (fresh.length && !$('clipboardDialog').open) {
+    try { sessionStorage.setItem('ahnaNoticeShown', JSON.stringify(shown.concat(fresh.map(n => n.id)).slice(-100))); } catch {}
+    openNotices();
+  }
+  if (!list.length && $('noticeDialog').open) $('noticeDialog').close();
+}
+function fillNotices() {
+  const box = $('noticeList'); box.replaceChildren();
+  for (const n of notices) {
+    const item = node('div', undefined, 'noticeItem' + (n.read ? '' : ' unread'));
+    const meta = node('div', undefined, 'noticeMeta');
+    meta.append(node('span', new Date(n.created).toLocaleString('ko-KR', { month:'numeric', day:'numeric', hour:'numeric', minute:'2-digit' }) + (n.read ? ' · 읽음 · 3일 뒤 사라짐' : ' · 읽지 않음')));
+    const button = node('button', n.read ? '삭제' : '읽음', 'btn' + (n.read ? '' : ' primary')); button.type = 'button';
+    button.onclick = async () => { button.disabled = true; try { await api('/api/admin/announcements/' + encodeURIComponent(n.id) + (n.read ? '/delete' : '/read'), {}); await refresh(); } catch (e) { message(e.message); button.disabled = false; } };
+    meta.append(button); item.append(node('p', n.text), meta); box.append(item);
+  }
+}
+function openNotices() { fillNotices(); if (!$('noticeDialog').open) $('noticeDialog').showModal(); }
+$('noticeBell').onclick = openNotices;
+$('closeNotice').onclick = () => $('noticeDialog').close();
 let reauthTried = false;
 function ownerSecret() { try { return sessionStorage.getItem('ahnaOwner') || ''; } catch { return ''; } }
 async function refresh() {

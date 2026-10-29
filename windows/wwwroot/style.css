@@ -223,3 +223,8 @@ dialog{width:min(560px,92vw);padding:20px;border:1px solid var(--border);border-
 .optAbout{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--border);border-radius:12px;background:var(--surface)}.optAbout strong{display:block;font-size:15px}.optAbout small{display:block;color:var(--muted);font-size:12px}
 body:not(.paired) .foot{max-width:440px;text-align:center}.localHint{margin-top:10px;padding-top:10px;border-top:1px solid var(--border)}
 body{word-break:keep-all;overflow-wrap:break-word}body.paired .foot{display:none}.sendNote{margin:2px 0 0;text-align:center}
+/* 서버 관리자 공지 */
+.bell{position:relative}.bellCount{min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--danger);color:#fff;font-size:11px;font-weight:700;line-height:18px;text-align:center}
+.noticeList{display:flex;flex-direction:column;gap:10px;max-height:60vh;overflow:auto;margin-bottom:12px}
+.noticeItem{border:1px solid var(--border);border-radius:10px;padding:12px 14px}.noticeItem.unread{border-color:var(--accent);box-shadow:inset 3px 0 0 var(--accent)}
+.noticeItem p{margin:0 0 8px;white-space:pre-wrap;word-break:keep-all;line-height:1.5}.noticeMeta{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}.noticeMeta .btn{margin-left:auto;padding:4px 12px;font-size:12px}
