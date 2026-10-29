@@ -21,11 +21,10 @@ input[type=password],input[type=number],input[type=text]{font:inherit;padding:8p
 .use{display:flex;gap:16px;flex-wrap:wrap;font-size:14px;color:var(--m)}.use b{color:var(--t);font-weight:600}
 .acts{display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end;align-content:start}
 @media(max-width:640px){.dev{grid-template-columns:1fr}.acts{justify-content:flex-start}}
-#login{max-width:360px;margin:12vh auto}#login input{width:100%;margin:12px 0}
+#login{max-width:360px;margin:12vh auto}#login input{width:100%;margin:16px 0 12px}
 #msg{min-height:20px;margin-top:8px}.err{color:var(--bad)}
 </style></head><body><main>
-<section id="login" class="card" hidden><h1>아나 관리</h1><p class="muted">서버 .env의 AHNA_ADMIN_PASSWORD 로 로그인합니다.</p>
-<form id="loginForm"><input id="pw" type="password" autocomplete="current-password" placeholder="관리자 비밀번호" required><button class="primary" style="width:100%">로그인</button></form><div id="loginMsg" class="muted"></div></section>
+<section id="login" class="card" hidden><h1>아나 관리</h1><form id="loginForm"><input id="pw" type="password" autocomplete="current-password" placeholder="관리자 비밀번호" required><button class="primary" style="width:100%">로그인</button></form><div id="loginMsg" class="muted"></div></section>
 <section id="app" hidden>
 <header><h1>아나 관리</h1><span class="sp"></span><button id="refresh">새로고침</button><button id="logout">로그아웃</button></header>
 <div class="card"><h2>하루 사용량 한도</h2>
