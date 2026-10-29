@@ -33,7 +33,8 @@ async def control(token, cid, notices=True):
     headers = {"Authorization": "Bearer " + token, "X-Ahna-Computer": cid, "X-Ahna-Name": urllib.parse.quote("테스트 PC")}
     if notices: headers["X-Ahna-Features"] = "notice,notices"
     ws = await websockets.connect(WS + "/_bridge/control", additional_headers=headers)
-    await ws.send(json.dumps({"type": "ping"}))
+    try: await ws.send(json.dumps({"type": "ping"}))
+    except websockets.ConnectionClosed: return ws   # 초기화·차단된 기기: 안내만 받고 닫힘
     # 서버는 45초 동안 ping이 없으면 끊습니다(앱은 15초마다 보냄).
     async def keep():
         try:
