@@ -335,15 +335,33 @@ footer{margin-top:auto;font-size:12px;color:var(--faint);text-align:center}
       if (index >= chosen.length) { show('uSending', false); show('uDone', true); ended = true; $('footer').textContent = '아나'; return; }
       var c = chosen[index], i = index;
       progress(done, c.name);
-      var x = new XMLHttpRequest();
-      x.open('POST', P + '/upload?i=' + i + '&name=' + encodeURIComponent(c.name));
-      x.upload.onprogress = function (e) { if (e.lengthComputable) progress(done + e.loaded, c.name); };
-      x.onload = function () {
+      ahnaSend(P + '/upload?i=' + i + '&name=' + encodeURIComponent(c.name), c.file, function (n) { progress(done + n, c.name); }, null, function (x, fail) {
+        if (fail) { show('uSending', false); error('연결이 끊겼습니다. 상대의 아나가 열려 있는지 확인하세요.'); return; }
         if (x.status >= 200 && x.status < 300) { done += c.file.size; index += 1; next(); }
         else { show('uSending', false); error('보내지 못했습니다 (' + x.status + '). 상대의 아나가 열려 있는지 확인하세요.'); }
-      };
-      x.onerror = function () { show('uSending', false); error('연결이 끊겼습니다. 상대의 아나가 열려 있는지 확인하세요.'); };
-      x.send(c.file);
+      });
+    }
+    // 큰 파일 나눠 올리기: Cloudflare 같은 프록시는 요청 하나를 100MB로 제한합니다.
+    // 첫 조각에 X-Ahna-Total(전체 크기)을 붙이고 나머지는 /_ahna/chunk/{id}로 이어 보냅니다(서버가 받는 기기로는 한 파일처럼 보냄).
+    function ahnaSend(url, file, onBytes, onXhr, done) {
+      var CHUNK = 50 * 1024 * 1024, big = location.protocol === 'https:' && file.size > CHUNK, offset = 0, id = '';
+      function step() {
+        var end = big ? Math.min(file.size, offset + CHUNK) : file.size, base = offset;
+        var x = new XMLHttpRequest(); if (onXhr) onXhr(x);
+        x.open(offset === 0 ? 'POST' : 'PUT', offset === 0 ? url : '/_ahna/chunk/' + id);
+        x.setRequestHeader('Content-Type', 'application/octet-stream');
+        if (big) x.setRequestHeader(offset === 0 ? 'X-Ahna-Total' : 'X-Ahna-Offset', String(offset === 0 ? file.size : offset));
+        x.upload.onprogress = function (e) { if (e.lengthComputable && onBytes) onBytes(base + e.loaded); };
+        x.onload = function () {
+          offset = end;
+          if (offset < file.size && x.status === 202) { try { id = JSON.parse(x.responseText).upload; } catch (e) { done(x); return; } step(); }
+          else done(x);
+        };
+        x.onerror = function () { done(null, 'error'); };
+        x.onabort = function () { done(null, 'abort'); };
+        x.send(big ? file.slice(offset, end) : file);
+      }
+      step();
     }
     next();
   }

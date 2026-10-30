@@ -50,12 +50,16 @@ internal sealed class OutboundDevices : TransferServer.IExternalDevices, IDispos
 
 		private readonly CancellationToken token;
 
-		public ProgressContent(string path, long size, Action<long> report, CancellationToken token)
+		// 나눠 올리기: 파일의 offset부터 size 바이트만 보냅니다(0이면 파일 전체).
+		private readonly long offset;
+
+		public ProgressContent(string path, long size, Action<long> report, CancellationToken token, long offset = 0L)
 		{
 			this.path = path;
 			this.size = size;
 			this.report = report;
 			this.token = token;
+			this.offset = offset;
 		}
 
 		protected override async Task SerializeToStreamAsync(Stream stream, TransportContext? context)
@@ -64,7 +68,12 @@ internal sealed class OutboundDevices : TransferServer.IExternalDevices, IDispos
 			byte[] buffer = new byte[65536];
 			long sent = 0L;
 			int read;
-			while ((read = await input.ReadAsync(buffer, token)) > 0)
+			bool part = offset > 0 || input.Length != size;
+			if (offset > 0)
+			{
+				input.Seek(offset, SeekOrigin.Begin);
+			}
+			while ((read = await input.ReadAsync(buffer.AsMemory(0, (int)Math.Min(buffer.Length, part ? size - sent : buffer.Length)), token)) > 0)
 			{
 				sent += read;
 				if (sent > size)
@@ -404,12 +413,19 @@ internal sealed class OutboundDevices : TransferServer.IExternalDevices, IDispos
 		return "상대 기기에 연결하지 못했습니다. 서버 주소와 상대 기기의 아나를 확인하세요.";
 	}
 
-	private async Task<HttpResponseMessage> Request(Profile p, HttpMethod method, string path, HttpContent? content = null, CancellationToken? token = null)
+	private async Task<HttpResponseMessage> Request(Profile p, HttpMethod method, string path, HttpContent? content = null, CancellationToken? token = null, Dictionary<string, string>? headers = null)
 	{
 		using HttpRequestMessage request = new HttpRequestMessage(method, Endpoint(p.Address, path))
 		{
 			Content = content
 		};
+		if (headers != null)
+		{
+			foreach (KeyValuePair<string, string> header in headers)
+			{
+				request.Headers.TryAddWithoutValidation(header.Key, header.Value);
+			}
+		}
 		if (p.Token.Length > 0)
 		{
 			request.Headers.Add("Cookie", "ahna=" + p.Token);
@@ -673,6 +689,36 @@ internal sealed class OutboundDevices : TransferServer.IExternalDevices, IDispos
 		}
 	}
 
+	// 큰 파일 나눠 올리기: Cloudflare 같은 프록시는 요청 하나를 100MB로 제한합니다.
+	// 첫 조각에 X-Ahna-Total(전체 크기)을 붙이면 서버가 받는 기기로는 한 파일처럼 이어 보내고, 나머지는 /_ahna/chunk로 받습니다.
+	private const long ChunkSize = 52428800L;
+
+	private async Task UploadChunked(Profile p, string path, string file, long size, Action<long> report, CancellationToken token)
+	{
+		string upload = "";
+		long offset = 0L;
+		while (offset < size)
+		{
+			long count = Math.Min(ChunkSize, size - offset);
+			long start = offset;
+			ProgressContent content = new ProgressContent(file, count, (long sent) => report(start + sent), token, offset);
+			content.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
+			using HttpResponseMessage response = (offset == 0L)
+				? await Request(p, HttpMethod.Post, path, content, token, new Dictionary<string, string> { ["X-Ahna-Total"] = size.ToString(System.Globalization.CultureInfo.InvariantCulture) })
+				: await Request(p, HttpMethod.Put, "/_ahna/chunk/" + upload, content, token, new Dictionary<string, string> { ["X-Ahna-Offset"] = offset.ToString(System.Globalization.CultureInfo.InvariantCulture) });
+			offset += count;
+			if (offset < size)
+			{
+				if (response.StatusCode != HttpStatusCode.Accepted)
+				{
+					throw new IOException("서버가 큰 파일 나눠 올리기를 지원하지 않습니다. 서버를 업데이트하세요.");
+				}
+				using JsonDocument doc = await Json(response);
+				upload = doc.RootElement.GetProperty("upload").GetString() ?? "";
+			}
+		}
+	}
+
 	private async Task SendFilesAsync(Profile p, string[] files, CancellationTokenSource cancel)
 	{
 		string deviceId = Id(p);
@@ -694,8 +740,19 @@ internal sealed class OutboundDevices : TransferServer.IExternalDevices, IDispos
 					progress = new Progress(deviceId, p.Name, index, files.Length, name, sent, size);
 				}, cancel.Token);
 				content.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
-				using (await Request(p, HttpMethod.Post, "/api/upload?batch=" + batch + "&path=" + Uri.EscapeDataString(name), content, cancel.Token))
+				string uploadPath = "/api/upload?batch=" + batch + "&path=" + Uri.EscapeDataString(name);
+				if (size > ChunkSize && p.Address.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
 				{
+					await UploadChunked(p, uploadPath, file, size, (long sent) =>
+					{
+						progress = new Progress(deviceId, p.Name, index, files.Length, name, sent, size);
+					}, cancel.Token);
+				}
+				else
+				{
+					using (await Request(p, HttpMethod.Post, uploadPath, content, cancel.Token))
+					{
+					}
 				}
 				server.RecordExternal("send", name, size, deviceId, p.Name, "상대 저장 완료");
 				done++;

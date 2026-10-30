@@ -440,6 +440,34 @@ enum ComputerVault {
         if let profile { address = profile.address }
         if receive { do { _ = try fileStore() } catch { progress = "자동 저장 준비 실패 · \(error.localizedDescription)" } }
     }
+    // 큰 파일 나눠 올리기: Cloudflare 같은 프록시는 요청 하나를 100MB로 제한합니다.
+    // 첫 조각에 X-Ahna-Total(전체 크기)을 붙이면 서버가 받는 기기로는 한 파일처럼 이어 보내고, 나머지는 /_ahna/chunk로 받습니다.
+    static let chunkSize: Int64 = 50 * 1024 * 1024
+    private func uploadChunked(_ first: URLRequest, file: URL, bytes: Int64, sent: ((Int64) -> Void)? = nil) async throws -> (Data, URLResponse) {
+        let handle = try FileHandle(forReadingFrom: file); defer { try? handle.close() }
+        var offset: Int64 = 0, upload = ""
+        while true {
+            try Task.checkCancellation()
+            let piece = try handle.read(upToCount: Int(min(Self.chunkSize, bytes - offset))) ?? Data()
+            guard !piece.isEmpty else { throw AhnaError.message("파일을 끝까지 읽지 못했습니다.") }
+            var request: URLRequest
+            if offset == 0 { request = first; request.setValue(String(bytes), forHTTPHeaderField: "X-Ahna-Total") }
+            else {
+                request = try self.request("/_ahna/chunk/" + upload); request.httpMethod = "PUT"
+                request.setValue(String(offset), forHTTPHeaderField: "X-Ahna-Offset")
+                request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
+            }
+            request.setValue(String(piece.count), forHTTPHeaderField: "Content-Length")
+            let (data, response) = try await session.upload(for: request, from: piece)
+            offset += Int64(piece.count); sent?(offset)
+            if offset >= bytes { return (data, response) }
+            guard (response as? HTTPURLResponse)?.statusCode == 202,
+                  let id = ((try? JSONSerialization.jsonObject(with: data)) as? [String: Any])?["upload"] as? String else {
+                try verify(response, data: data); throw AhnaError.message("서버가 큰 파일 나눠 올리기를 지원하지 않습니다. 서버를 업데이트하세요.")
+            }
+            upload = id
+        }
+    }
     func endpoint(_ path: String) throws -> URL {
         guard var components = URLComponents(string: address.trimmingCharacters(in: .whitespacesAndNewlines)),
               let host = components.host, !host.isEmpty,
@@ -585,7 +613,9 @@ enum ComputerVault {
                     let watcher = UploadProgress { [weak self] sent in
                         Task { @MainActor in self?.fraction = min(1, Double(base + sent) / total) }
                     }
-                    let (data, response) = try await session.upload(for: request, fromFile: file.url, delegate: watcher)
+                    let (data, response) = file.bytes > Self.chunkSize
+                        ? try await uploadChunked(request, file: file.url, bytes: file.bytes) { [weak self] sent in self?.fraction = min(1, Double(base + sent) / total) }
+                        : try await session.upload(for: request, fromFile: file.url, delegate: watcher)
                     try verify(response, data: data)
                     done += max(file.bytes, 1); fraction = min(1, Double(done) / total)
                 }

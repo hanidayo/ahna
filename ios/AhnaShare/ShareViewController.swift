@@ -109,11 +109,22 @@ final class ShareViewController: UIViewController {
                 let total = max(1, files.reduce(Int64(0)) { $0 + $1.bytes }); var sent: Int64 = 0
                 for (index, file) in files.enumerated() {
                     try Task.checkCancellation()
-                    var put = request("/_ahna/drop/\(drop)/\(index)", "PUT"); put.timeoutInterval = 3600
-                    put.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
-                    let (_, uploaded) = try await session.upload(for: put, fromFile: file.url)
-                    guard (uploaded as? HTTPURLResponse)?.statusCode == 200 else { throw AhnaError.message("파일을 올리지 못했습니다.") }
-                    sent += file.bytes; self.phase = .uploading(Double(sent) / Double(total))
+                    // 큰 파일은 50MB씩 이어 올립니다(X-Ahna-Offset). 프록시의 요청 크기 제한(100MB)을 피함.
+                    let handle = try FileHandle(forReadingFrom: file.url); defer { try? handle.close() }
+                    var offset: Int64 = 0
+                    repeat {
+                        try Task.checkCancellation()
+                        let piece = try handle.read(upToCount: Int(min(AhnaConnection.chunkSize, file.bytes - offset))) ?? Data()
+                        guard !piece.isEmpty || file.bytes == 0 else { throw AhnaError.message("파일을 끝까지 읽지 못했습니다.") }
+                        var put = request("/_ahna/drop/\(drop)/\(index)", "PUT"); put.timeoutInterval = 3600
+                        put.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
+                        put.setValue(String(offset), forHTTPHeaderField: "X-Ahna-Offset")
+                        let (_, uploaded) = try await session.upload(for: put, from: piece)
+                        guard (uploaded as? HTTPURLResponse)?.statusCode == 200 else { throw AhnaError.message("파일을 올리지 못했습니다.") }
+                        offset += Int64(piece.count)
+                        self.phase = .uploading(Double(sent + offset) / Double(total))
+                    } while offset < file.bytes
+                    sent += file.bytes
                 }
                 // 3) 근처 기기에 알리기
                 let offer = NearbyOffer(name: DeviceIdentity.savedName, platform: UIDevice.current.userInterfaceIdiom == .pad ? "iPad" : "iPhone", code: code,

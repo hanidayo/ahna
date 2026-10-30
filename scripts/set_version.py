@@ -22,8 +22,9 @@ v = a.version.lstrip("vV")
 if not re.fullmatch(r"\d+\.\d+\.\d+", v):
     sys.exit("버전은 X.Y.Z 형식이어야 합니다: " + v)
 major, minor, patch = map(int, v.split("."))
-# 빌드 번호는 버전에서 계산합니다(1.0.0 → 10000). 이전 Android 63, iOS 15보다 항상 큽니다.
-code = a.build or (major * 10000 + minor * 100 + patch)
+# 빌드 번호는 버전에서 계산합니다(1.0.0 → 30000). 새 서버로 옮기며 버전을 1.0.0으로 되돌렸으므로
+# 예전 빌드(1.0.x → 100xx)보다 커지게 20000을 더합니다(안드로이드는 빌드 번호가 작으면 덮어 설치가 안 됨).
+code = a.build or (20000 + major * 10000 + minor * 100 + patch)
 
 
 def sub(rel, pattern, repl, count=0, required=True):

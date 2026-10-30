@@ -59,6 +59,28 @@ $('pick').onclick = async () => { $('pick').disabled=true; try { await api('/api
 $('settings').onclick = () => api('/api/admin/settings', {}).catch(e => message(e.message));
 $('revoke').onclick = async () => { if (confirm('연결된 기기를 모두 해제하고 코드를 변경할까요?')) { try { await api('/api/admin/revoke', {}); await refresh(); } catch(e) { message(e.message); } } };
 function batchId() { const b = crypto.getRandomValues(new Uint8Array(16)); b[6] = (b[6]&15)|64; b[8] = (b[8]&63)|128; const h = [...b].map(v=>v.toString(16).padStart(2,'0')).join(''); return `${h.slice(0,8)}-${h.slice(8,12)}-${h.slice(12,16)}-${h.slice(16,20)}-${h.slice(20)}`; }
+// 큰 파일 나눠 올리기: Cloudflare 같은 프록시는 요청 하나를 100MB로 제한합니다.
+// 첫 조각에 X-Ahna-Total(전체 크기)을 붙이고 나머지는 /_ahna/chunk/{id}로 이어 보냅니다(서버가 받는 기기로는 한 파일처럼 보냄).
+function ahnaSend(url, file, onBytes, onXhr, done) {
+  var CHUNK = 50 * 1024 * 1024, big = location.protocol === 'https:' && file.size > CHUNK, offset = 0, id = '';
+  function step() {
+    var end = big ? Math.min(file.size, offset + CHUNK) : file.size, base = offset;
+    var x = new XMLHttpRequest(); if (onXhr) onXhr(x);
+    x.open(offset === 0 ? 'POST' : 'PUT', offset === 0 ? url : '/_ahna/chunk/' + id);
+    x.setRequestHeader('Content-Type', 'application/octet-stream');
+    if (big) x.setRequestHeader(offset === 0 ? 'X-Ahna-Total' : 'X-Ahna-Offset', String(offset === 0 ? file.size : offset));
+    x.upload.onprogress = function (e) { if (e.lengthComputable && onBytes) onBytes(base + e.loaded); };
+    x.onload = function () {
+      offset = end;
+      if (offset < file.size && x.status === 202) { try { id = JSON.parse(x.responseText).upload; } catch (e) { done(x); return; } step(); }
+      else done(x);
+    };
+    x.onerror = function () { done(null, 'error'); };
+    x.onabort = function () { done(null, 'abort'); };
+    x.send(big ? file.slice(offset, end) : file);
+  }
+  step();
+}
 async function upload(files) {
   if (busy || !files.length) return;
   if (!state) { message('먼저 연결 코드를 입력해 주세요.'); return; }
@@ -69,16 +91,11 @@ async function upload(files) {
     for (const file of files) {
       $('progressName').textContent=`${completed+1}/${files.length} · ${file.webkitRelativePath || file.name}`;
       $('progress').value=0; $('progressPercent').textContent='0%';
-      await new Promise((resolve,reject)=>{
-        const xhr=new XMLHttpRequest(); currentUpload=xhr;
-        xhr.open('POST','/api/upload?batch='+batch+'&path='+encodeURIComponent(file.webkitRelativePath || file.name));
-        xhr.setRequestHeader('Content-Type','application/octet-stream');
-        xhr.upload.onprogress=e=>{ if(e.lengthComputable) { const pct=Math.round(e.loaded/e.total*100); $('progress').value=pct; $('progressPercent').textContent=pct+'%'; } };
-        xhr.onload=()=>{ if(xhr.status>=200&&xhr.status<300) resolve(); else { let error; try { error=JSON.parse(xhr.responseText).error; } catch{} reject(new Error(error || `전송 실패 (${xhr.status})`)); } };
-        xhr.onerror=()=>reject(new Error('연결이 끊겼습니다. Wi-Fi와 Windows 앱을 확인하세요.'));
-        xhr.onabort=()=>reject(new Error('전송을 중단했습니다. 완료된 파일은 유지됩니다.'));
-        xhr.send(file);
-      });
+      await new Promise((resolve,reject)=>ahnaSend('/api/upload?batch='+batch+'&path='+encodeURIComponent(file.webkitRelativePath || file.name),file,loaded=>{ const pct=Math.round(loaded/Math.max(1,file.size)*100); $('progress').value=pct; $('progressPercent').textContent=pct+'%'; },xhr=>{currentUpload=xhr;},(xhr,fail)=>{
+        if(fail) reject(new Error(fail==='abort'?'전송을 중단했습니다. 완료된 파일은 유지됩니다.':'연결이 끊겼습니다. Wi-Fi와 Windows 앱을 확인하세요.'));
+        else if(xhr.status>=200&&xhr.status<300) resolve();
+        else { let error; try { error=JSON.parse(xhr.responseText).error; } catch{} reject(new Error(error || `전송 실패 (${xhr.status})`)); }
+      }));
       completed++;
     }
     message(`${completed}개 파일을 Windows에 저장했습니다.`);

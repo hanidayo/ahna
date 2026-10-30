@@ -42,7 +42,29 @@ public final class Client {
     public boolean pair(String pin,String name,String own,JSONObject reverse)throws Exception {JSONObject body=new JSONObject().put("pin",pin.trim()).put("name",name).put("native",true).put("canReceive",true);String mine=Protocol.peerIdentity(own);if(!mine.isEmpty())body.put("computerID",mine);if(reverse!=null)body.put("reverse",reverse);JSONObject paired=request("/api/pair",body);String identity=paired.optString("computerID","");if(identity.matches("[a-fA-F0-9]{32}"))profile.put("computerID",identity);boolean accepted=reverse!=null&&paired.optBoolean("reverse",false);refresh(name,own);return accepted;}
     public void refresh(String name)throws Exception {refresh(name,null);}
     public void refresh(String name,String own)throws Exception {String mine=Protocol.peerIdentity(own);state=request("/api/state?receiving=true&deviceName="+escape(name)+(mine.isEmpty()?"":"&computerID="+mine),null);revoked=false;profile.put("hostName",state.optString("hostName","기기"));}
-    public void send(File file,String name)throws Exception {HttpURLConnection c=connection("/api/upload?batch="+UUID.randomUUID()+"&path="+escape(Protocol.safeName(name)));try{if(file.length()>Protocol.MAX)throw new IOException("최대 4 GiB입니다.");c.setRequestMethod("POST");c.setDoOutput(true);c.setFixedLengthStreamingMode(file.length());c.setRequestProperty("Content-Type","application/octet-stream");try(InputStream in=new FileInputStream(file);OutputStream out=c.getOutputStream()){Protocol.copy(in,out,file.length());}check(c);}finally{c.disconnect();}}
+    /** 큰 파일 나눠 올리기: Cloudflare 같은 프록시는 요청 하나를 100MB로 제한합니다. 첫 조각에 X-Ahna-Total을 붙이면 서버가 받는 기기로는 한 파일처럼 이어 보냅니다. */
+    static final long CHUNK=50L*1024*1024;
+    private void sendChunked(File file,String path)throws Exception {
+        long size=file.length(),offset=0;String upload="";
+        try(InputStream in=new FileInputStream(file)){
+            while(offset<size){
+                long count=Math.min(CHUNK,size-offset);
+                HttpURLConnection c=connection(offset==0?path:"/_ahna/chunk/"+upload);
+                try{
+                    c.setRequestMethod(offset==0?"POST":"PUT");c.setDoOutput(true);c.setFixedLengthStreamingMode(count);c.setRequestProperty("Content-Type","application/octet-stream");
+                    if(offset==0)c.setRequestProperty("X-Ahna-Total",Long.toString(size));else c.setRequestProperty("X-Ahna-Offset",Long.toString(offset));
+                    try(OutputStream out=c.getOutputStream()){Protocol.copy(in,out,count);}
+                    check(c);offset+=count;
+                    if(offset<size){
+                        if(c.getResponseCode()!=202)throw new IOException("서버가 큰 파일 나눠 올리기를 지원하지 않습니다. 서버를 업데이트하세요.");
+                        try(InputStream r=c.getInputStream()){ByteArrayOutputStream b=new ByteArrayOutputStream();byte[] buffer=new byte[4096];int n;while((n=r.read(buffer))>=0&&b.size()<65536)b.write(buffer,0,n);upload=new JSONObject(b.toString("UTF-8")).getString("upload");}
+                        if(!upload.matches("[a-f0-9]{32}"))throw new IOException("잘못된 서버 응답입니다.");
+                    }
+                }finally{c.disconnect();}
+            }
+        }
+    }
+    public void send(File file,String name)throws Exception {String path="/api/upload?batch="+UUID.randomUUID()+"&path="+escape(Protocol.safeName(name));if(file.length()>CHUNK&&file.length()<=Protocol.MAX){sendChunked(file,path);return;}HttpURLConnection c=connection(path);try{if(file.length()>Protocol.MAX)throw new IOException("최대 4 GiB입니다.");c.setRequestMethod("POST");c.setDoOutput(true);c.setFixedLengthStreamingMode(file.length());c.setRequestProperty("Content-Type","application/octet-stream");try(InputStream in=new FileInputStream(file);OutputStream out=c.getOutputStream()){Protocol.copy(in,out,file.length());}check(c);}finally{c.disconnect();}}
     public void sendClipboard(String text)throws Exception {Protocol.validateText(text);byte[] bytes=text.getBytes(StandardCharsets.UTF_8);HttpURLConnection c=connection("/api/upload?batch="+UUID.randomUUID()+"&kind=clipboard");try{c.setRequestMethod("POST");c.setDoOutput(true);c.setFixedLengthStreamingMode(bytes.length);try(OutputStream out=c.getOutputStream()){out.write(bytes);}check(c);}finally{c.disconnect();}}
     public String clipboard(String id)throws Exception {if(!id.matches("[a-fA-F0-9]{32}"))throw new IOException("잘못된 글자 ID입니다.");HttpURLConnection c=connection("/api/download/"+id+"?kind=clipboard");try{check(c);try(InputStream in=c.getInputStream()){ByteArrayOutputStream b=new ByteArrayOutputStream();byte[] buffer=new byte[4096];int n;while((n=in.read(buffer))>=0){if(b.size()+n>65536)throw new IOException("글자가 너무 큽니다.");b.write(buffer,0,n);}String text=Protocol.strictUTF8(b.toByteArray());Protocol.validateText(text);return text;}}finally{c.disconnect();}}
     public void download(JSONObject item,File destination)throws Exception {String id=item.getString("id");long expected=item.getLong("bytes");if(!id.matches("[a-fA-F0-9]{32}")||expected<0||expected>Protocol.MAX)throw new IOException("잘못된 파일 정보입니다.");HttpURLConnection c=connection("/api/download/"+id);try{check(c);if(c.getContentLengthLong()!=expected)throw new IOException("파일 크기가 다릅니다.");try(InputStream in=c.getInputStream();OutputStream out=new FileOutputStream(destination)){Protocol.copy(in,out,expected);if(in.read()!=-1)throw new IOException("파일 크기가 다릅니다.");}}catch(Exception e){destination.delete();throw e;}finally{c.disconnect();}}
