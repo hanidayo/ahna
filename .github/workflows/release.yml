@@ -1,13 +1,15 @@
 # 아나 빌드 · 배포
 #
-# Actions › release › Run workflow 로 실행합니다 (version: 1.0.1 처럼).
-#   publish=true  : 서버 이미지(:1 · :latest)를 올리고, 앱 파일을 아나 서버로 바로 올립니다.
+# Actions › release › Run workflow 로 실행합니다 (version: 1.0 처럼 X.Y).
+#   publish=true  : 서버 이미지(:1 · :latest)를 올리고, 앱 파일을 공개 배포 저장소(hanidayo/ahna-releases)의
+#                   릴리스 vX.Y에 올립니다. 서버에는 latest.json만 올리고(앱 파일 주소는 GitHub),
 #                   앱들은 6시간마다 서버의 latest.json을 확인해 스스로 업데이트합니다.
 #   publish 비움  : 시험 빌드만 (빌드가 되는지 확인. 공개 저장소이므로 빌드한 파일은 남기지 않습니다)
 #   server_test=true : 서버 이미지를 :test 태그로만 올립니다 (정식 :1 은 그대로)
 #
 # 필요한 비밀값: AHNA_SERVER (아나 서버 주소, 예: https://example.synology.me)
 #               AHNA_PUBLISH_KEY (서버 .env 의 AHNA_PUBLISH_KEY 와 같은 값)
+#               RELEASES_TOKEN (hanidayo/ahna-releases 에 Contents 쓰기 권한이 있는 토큰)
 #               ANDROID_KEYSTORE_BASE64 · ANDROID_KEY_PASSWORD (안드로이드 서명)
 # 소스에는 예시 주소만 있고, 빌드할 때 scripts/set_server.py가 AHNA_SERVER를 넣습니다.
 name: release
@@ -16,7 +18,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "버전 (예: 1.0.1)"
+        description: "버전 (예: 1.0)"
         required: true
       publish:
         description: "true면 서버 이미지 + 앱 업데이트를 서버에 게시. 비우면 시험 빌드만"
@@ -33,6 +35,7 @@ permissions:
 
 env:
   DOTNET_VERSION: "10.0.x"
+  RELEASES_REPO: hanidayo/ahna-releases
   PYTHONUTF8: "1"          # Windows에서 한글 출력 오류 방지
   PYTHONIOENCODING: "utf-8"
   AHNA_TEAM_ID: "6PHYY26T68"   # Sideloadly 설치와 같은 Team (Keychain 공유 그룹)
@@ -45,8 +48,17 @@ jobs:
     steps:
       - id: v
         run: |
-          v="${{ github.event.inputs.version }}"
-          echo "v=${v#v}" >> "$GITHUB_OUTPUT"
+          v="${{ github.event.inputs.version }}"; v="${v#v}"; v="${v#V}"
+          echo "$v" | grep -Eq '^[0-9]+\.[0-9]+(\.[0-9]+)?$' || { echo "::error::버전은 1.0 처럼 X.Y 형식으로 입력하세요: $v"; exit 1; }
+          echo "v=$v" >> "$GITHUB_OUTPUT"
+      - name: 배포 저장소에 vX.Y 초안 만들기 (정식 배포)
+        if: ${{ github.event.inputs.publish == 'true' }}
+        env: { GH_TOKEN: "${{ secrets.RELEASES_TOKEN }}", V: "${{ steps.v.outputs.v }}" }
+        run: |
+          [ -n "$GH_TOKEN" ] || { echo "::error::비밀값 RELEASES_TOKEN이 없습니다."; exit 1; }
+          # 같은 버전을 다시 올리면(잠수함 패치) 예전 릴리스를 지우고 새로 만듭니다.
+          if gh release view "v$V" -R "$RELEASES_REPO" >/dev/null 2>&1; then gh release delete "v$V" -R "$RELEASES_REPO" --yes --cleanup-tag; fi
+          gh release create "v$V" -R "$RELEASES_REPO" --draft --title "아나 $V" --notes "빌드 중…"
 
   server:
     needs: version
@@ -121,16 +133,16 @@ jobs:
           $v = "${{ needs.version.outputs.v }}"
           $p = Start-Process "out/Ahna-$v-Windows/app/Ahna.exe" -ArgumentList "--self-test", "$env:RUNNER_TEMP\selftest" -Wait -PassThru
           "self-test exit: $($p.ExitCode)"
-      - name: 서버에 올리기 (정식 배포)
+      - name: 배포 저장소에 올리기 (정식 배포)
         if: ${{ github.event.inputs.publish == 'true' }}
         id: zip
-        env: { AHNA_PUBLISH_KEY: "${{ secrets.AHNA_PUBLISH_KEY }}" }
-        run: python scripts/upload.py dist/Ahna-Windows.zip "Ahna-windows-${{ needs.version.outputs.v }}.zip"
+        env: { GH_TOKEN: "${{ secrets.RELEASES_TOKEN }}" }
+        run: python scripts/release_asset.py dist/Ahna-Windows.zip "${{ needs.version.outputs.v }}"
       - name: 설치 파일 올리기 (정식 배포)
         if: ${{ github.event.inputs.publish == 'true' }}
         id: setup
-        env: { AHNA_PUBLISH_KEY: "${{ secrets.AHNA_PUBLISH_KEY }}" }
-        run: python scripts/upload.py dist/Ahna-Setup.exe "Ahna-Setup-${{ needs.version.outputs.v }}.exe"
+        env: { GH_TOKEN: "${{ secrets.RELEASES_TOKEN }}" }
+        run: python scripts/release_asset.py dist/Ahna-Setup.exe "${{ needs.version.outputs.v }}"
 
   ios:
     needs: version
@@ -168,11 +180,11 @@ jobs:
       - run: |
           mkdir -p dist
           cp "ios/dist/Ahna-${{ needs.version.outputs.v }}-sideloadly.ipa" dist/Ahna-iOS.ipa
-      - name: 서버에 올리기 (정식 배포)
+      - name: 배포 저장소에 올리기 (정식 배포)
         if: ${{ github.event.inputs.publish == 'true' }}
         id: up
-        env: { AHNA_PUBLISH_KEY: "${{ secrets.AHNA_PUBLISH_KEY }}" }
-        run: python3 scripts/upload.py dist/Ahna-iOS.ipa "Ahna-ios-${{ needs.version.outputs.v }}.ipa"
+        env: { GH_TOKEN: "${{ secrets.RELEASES_TOKEN }}" }
+        run: python3 scripts/release_asset.py dist/Ahna-iOS.ipa "${{ needs.version.outputs.v }}"
 
   mac:
     needs: version
@@ -208,11 +220,11 @@ jobs:
       - run: |
           mkdir -p dist
           ditto -c -k --keepParent "mac/dist/Ahna.app" dist/Ahna-Mac.zip
-      - name: 서버에 올리기 (정식 배포)
+      - name: 배포 저장소에 올리기 (정식 배포)
         if: ${{ github.event.inputs.publish == 'true' }}
         id: up
-        env: { AHNA_PUBLISH_KEY: "${{ secrets.AHNA_PUBLISH_KEY }}" }
-        run: python3 scripts/upload.py dist/Ahna-Mac.zip "Ahna-mac-${{ needs.version.outputs.v }}.zip"
+        env: { GH_TOKEN: "${{ secrets.RELEASES_TOKEN }}" }
+        run: python3 scripts/release_asset.py dist/Ahna-Mac.zip "${{ needs.version.outputs.v }}"
 
   android:
     needs: version
@@ -248,11 +260,11 @@ jobs:
           [ $st -eq 0 ] || exit $st
           mkdir -p dist
           cp "android/app/build/manual/Ahna-${{ needs.version.outputs.v }}-Android.apk" dist/Ahna-Android.apk
-      - name: 서버에 올리기 (정식 배포)
+      - name: 배포 저장소에 올리기 (정식 배포)
         if: ${{ github.event.inputs.publish == 'true' }}
         id: up
-        env: { AHNA_PUBLISH_KEY: "${{ secrets.AHNA_PUBLISH_KEY }}" }
-        run: python3 scripts/upload.py dist/Ahna-Android.apk "Ahna-android-${{ needs.version.outputs.v }}.apk"
+        env: { GH_TOKEN: "${{ secrets.RELEASES_TOKEN }}" }
+        run: python3 scripts/release_asset.py dist/Ahna-Android.apk "${{ needs.version.outputs.v }}"
 
   publish:
     needs: [version, server, windows, ios, mac, android]
@@ -271,4 +283,11 @@ jobs:
           IOS: ${{ needs.ios.outputs.asset }}
           MAC: ${{ needs.mac.outputs.asset }}
           ANDROID: ${{ needs.android.outputs.asset }}
+          RELEASE_BASE: https://github.com/${{ env.RELEASES_REPO }}/releases/download/v${{ needs.version.outputs.v }}
+          NOTES_URL: https://github.com/${{ env.RELEASES_REPO }}/releases/latest
         run: python3 scripts/make_manifest.py "${{ needs.version.outputs.v }}"
+      - name: 릴리스 공개 (설명 + latest.json)
+        env: { GH_TOKEN: "${{ secrets.RELEASES_TOKEN }}", V: "${{ needs.version.outputs.v }}" }
+        run: |
+          sed "s/{VERSION}/$V/g" docs/release-notes.md > "$RUNNER_TEMP/notes.md"
+          gh release edit "v$V" -R "$RELEASES_REPO" --notes-file "$RUNNER_TEMP/notes.md" --draft=false --latest

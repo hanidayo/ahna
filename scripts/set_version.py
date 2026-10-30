@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """모든 플랫폼의 버전을 한 번에 맞춥니다.
 
-    python3 scripts/set_version.py 1.0.0
+    python3 scripts/set_version.py 1.0      (X.Y, 잠수함 패치용 X.Y.Z도 가능)
 
 VERSION 파일, Windows/Mac/iOS/Android/NAS 프로젝트와 웹 화면 표기를 같은 버전으로 바꿉니다.
 CI(release.yml)가 태그(vX.Y.Z)로 자동 실행하므로 평소에는 VERSION만 바꾸고 태그를 올리면 됩니다.
@@ -19,9 +19,10 @@ p.add_argument("version")
 p.add_argument("--build", type=int, help="빌드 번호를 직접 지정할 때만 사용")
 a = p.parse_args()
 v = a.version.lstrip("vV")
-if not re.fullmatch(r"\d+\.\d+\.\d+", v):
-    sys.exit("버전은 X.Y.Z 형식이어야 합니다: " + v)
-major, minor, patch = map(int, v.split("."))
+if not re.fullmatch(r"\d+\.\d+(\.\d+)?", v):
+    sys.exit("버전은 X.Y 형식이어야 합니다: " + v)
+major, minor, patch = (list(map(int, v.split("."))) + [0])[:3]
+full = f"{major}.{minor}.{patch}"   # 4자리 버전이 필요한 곳(Windows 파일 버전)
 # 빌드 번호는 버전에서 계산합니다(1.0.0 → 30000). 새 서버로 옮기며 버전을 1.0.0으로 되돌렸으므로
 # 예전 빌드(1.0.x → 100xx)보다 커지게 20000을 더합니다(안드로이드는 빌드 번호가 작으면 덮어 설치가 안 됨).
 code = a.build or (20000 + major * 10000 + minor * 100 + patch)
@@ -39,11 +40,11 @@ def sub(rel, pattern, repl, count=0, required=True):
 (root / "VERSION").write_text(v + "\n", encoding="utf-8")
 
 # Windows
-sub("windows/Properties/AssemblyInfo.cs", r'AssemblyFileVersion\("[^"]*"\)', f'AssemblyFileVersion("{v}.0")')
+sub("windows/Properties/AssemblyInfo.cs", r'AssemblyFileVersion\("[^"]*"\)', f'AssemblyFileVersion("{full}.0")')
 sub("windows/Properties/AssemblyInfo.cs", r'AssemblyInformationalVersion\("[^"]*"\)', f'AssemblyInformationalVersion("{v}")')
-sub("windows/Properties/AssemblyInfo.cs", r'AssemblyVersion\("[^"]*"\)', f'AssemblyVersion("{v}.0")')
+sub("windows/Properties/AssemblyInfo.cs", r'AssemblyVersion\("[^"]*"\)', f'AssemblyVersion("{full}.0")')
 for web, need in (("windows/wwwroot/index.html", True), ("src/wwwroot/index.html", False)):
-    sub(web, r"((?:Ahna|아나) )\d+\.\d+\.\d+", rf"\g<1>{v}", required=need)
+    sub(web, r"((?:Ahna|아나) )\d+\.\d+(?:\.\d+)?", rf"\g<1>{v}", required=need)
 
 # Mac (앱 + 공유 확장 + 수신 구성요소)
 for plist in ("mac/Bundle/Info.plist", "mac/ShareExtension/Info.plist"):

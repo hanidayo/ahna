@@ -13,7 +13,9 @@ def asset(env):
     value = os.environ.get(env, "").strip()
     if not value: return None
     a = json.loads(value)
-    return {"url": f"{server}/_ahna/update/{a['name']}", "sha256": a["sha256"], "size": a["size"]}
+    # 앱 파일은 공개 배포 저장소(GitHub Releases)에서 받습니다(RELEASE_BASE). 없으면 예전처럼 서버에서.
+    base = os.environ.get("RELEASE_BASE", "").rstrip("/") or f"{server}/_ahna/update"
+    return {"url": f"{base}/{a['name']}", "sha256": a["sha256"], "size": a["size"]}
 missing = [k for k in ("WINDOWS", "IOS", "MAC", "ANDROID") if not os.environ.get(k, "").strip()]
 if missing: sys.exit("빌드 결과를 받지 못했습니다: " + ", ".join(missing))
 platforms = {k: v for k, v in {"windows": asset("WINDOWS"), "ios": asset("IOS"), "mac": asset("MAC"), "android": asset("ANDROID")}.items() if v}
@@ -21,7 +23,7 @@ setup = asset("WINDOWS_SETUP")
 manifest = {
     "name": "아나", "version": version,
     "publishedAt": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-    "notesUrl": f"{server}/_ahna/download", "fullInstallRequired": False,
+    "notesUrl": os.environ.get("NOTES_URL") or f"{server}/_ahna/download", "fullInstallRequired": False,
     "platforms": platforms, "downloads": {"windows": setup["url"]} if setup else {},
 }
 folder = pathlib.Path(tempfile.mkdtemp())
