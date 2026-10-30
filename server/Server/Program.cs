@@ -275,7 +275,6 @@ app.MapPut("/_ahna/drop/{token}/{index:int}",async (string token,int index,HttpC
     if(size==d.Files[index].Bytes)lock(d){d.Uploaded[index]=true;if(d.Uploaded.All(x=>x)&&d.State=="uploading")d.State="ready";}
     await c.Response.WriteAsJsonAsync(new{state=d.State,received=size});
 });
-});
 app.MapGet("/_ahna/drop/{token}",(string token,HttpContext c)=>OwnDrop(c,token) is { } d?Results.Json(new{state=d.State,completed=d.Completed.Count(x=>x),count=d.Files.Length}):Results.NotFound());
 app.MapPost("/_ahna/drop/{token}/cancel",(string token,HttpContext c)=>{if(OwnDrop(c,token) is { } d)EndDrop(d,"declined");return Results.Ok();});
 // 받는 쪽(근처 기기): /s/{0×32}/{토큰}[/info|/status|/file/N|/decline]
