@@ -74,7 +74,7 @@ app.Use(async(c,next)=>
     if(!string.Equals(c.Request.Host.Value,publicUri.Authority,StringComparison.OrdinalIgnoreCase)){c.Response.StatusCode=400;return;}
     var origin=c.Request.Headers.Origin.ToString();
     // A guest link (/s/...) may be opened from another site (a shared link or a messenger); only that page view is let through.
-    if((origin.Length>0 && origin!=publicOrigin) || c.Request.Headers["Sec-Fetch-Site"]=="cross-site" && !((Wire.GuestPage(c.Request.Method,c.Request.Path.Value??"") || c.Request.Method=="GET" && (c.Request.Path.StartsWithSegments("/_ahna/update") || c.Request.Path=="/_ahna/download" || c.Request.Path=="/d")) && c.Request.Headers["Sec-Fetch-Mode"]=="navigate")){c.Response.StatusCode=403;return;}
+    if((origin.Length>0 && origin!=publicOrigin) || c.Request.Headers["Sec-Fetch-Site"]=="cross-site" && !((Wire.GuestPage(c.Request.Method,c.Request.Path.Value??"") || c.Request.Method=="GET" && (c.Request.Path.StartsWithSegments("/_ahna/update") || c.Request.Path=="/_ahna/download" || c.Request.Path=="/download" || c.Request.Path=="/d")) && c.Request.Headers["Sec-Fetch-Mode"]=="navigate")){c.Response.StatusCode=403;return;}
     try{await next(c);}catch(OperationCanceledException){if(!c.Response.HasStarted)c.Response.StatusCode=504;else c.Abort();}
     catch{if(!c.Response.HasStarted){c.Response.StatusCode=502;await c.Response.WriteAsync("아나 연결이 끊겼습니다. 상대 기기의 아나와 인터넷 연결을 확인하세요.");}else c.Abort();}
 });
@@ -93,10 +93,10 @@ app.MapGet("/_ahna/update/{name}",(string name)=>
     var type=name.EndsWith(".json",StringComparison.OrdinalIgnoreCase)?"application/json; charset=utf-8":"application/octet-stream";
     return Results.File(path,type,name.EndsWith(".json",StringComparison.OrdinalIgnoreCase)?null:name,enableRangeProcessing:true);
 });
-// 짧은 주소: {서버}/d → 내려받기 화면
-app.MapGet("/d",()=>Results.Redirect("/_ahna/download"));
+// 짧은 주소: {서버}/d → 내려받기 화면 {서버}/download (예전 /_ahna/download 도 그대로 열림)
+app.MapGet("/d",()=>Results.Redirect("/download"));
 // 지인에게 보낼 수 있는 내려받기 화면
-app.MapGet("/_ahna/download",async (HttpContext c)=>
+RequestDelegate downloadPage=async c=>
 {
     string version="",windows="",ios="",android="",mac="";bool windowsSetup=false;
     try
@@ -116,13 +116,18 @@ app.MapGet("/_ahna/download",async (HttpContext c)=>
 <style>:root{--bg:#eef1f5;--s:#fff;--t:#1b1b1b;--m:#5c5c5c;--a:#005fb8;--b:#e3e6ea}@media(prefers-color-scheme:dark){:root{--bg:#1c1c1c;--s:#272727;--t:#f0f0f0;--m:#c5c5c5;--a:#4cc2ff;--b:#3a3a3a}}
 body{margin:0;background:var(--bg);color:var(--t);font-family:system-ui,'Malgun Gothic',sans-serif}main{max-width:460px;margin:0 auto;padding:40px 16px}
 .logo{width:64px;height:64px;border-radius:16px;background:#005fb8;display:grid;place-items:center}h1{font-size:30px;margin:16px 0 4px}p{color:var(--m);margin:0 0 24px}.mean{color:var(--t);font-size:15px;margin:0 0 10px;line-height:1.5}
-.row{display:flex;flex-direction:column;gap:2px;padding:14px 16px;margin-bottom:10px;border-radius:12px;background:var(--s);border:1px solid var(--b);color:var(--t);text-decoration:none}.row b{color:var(--a)}.row small{color:var(--m)}</style></head>
+.row{display:flex;flex-direction:column;gap:2px;padding:14px 16px;margin-bottom:10px;border-radius:12px;background:var(--s);border:1px solid var(--b);color:var(--t);text-decoration:none}.row b{color:var(--a)}.row small{color:var(--m)}
+.how{margin-top:26px;padding:16px;border-radius:12px;background:var(--s);border:1px solid var(--b)}.how h2{font-size:16px;margin:0 0 8px}.how ol{margin:0;padding-left:20px;line-height:1.6;font-size:14px}.foot{margin-top:28px;font-size:12px;text-align:center}</style></head>
 <body><main><div class="logo"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg></div>
 <h1>아나</h1><p class="mean">경상도 말로 “옛다, 받아라”<br>— 툭 건네듯 주고받는 앱입니다</p>{{{(version.Length>0?"<p>v"+System.Net.WebUtility.HtmlEncode(version)+"</p>":"")}}}
 {{{Row("Windows",windows,windowsSetup?"내려받아 실행하면 설치됩니다. ‘Windows의 PC 보호’ 창이 뜨면 [추가 정보] → [실행]을 누르세요.":"압축을 풀고 설치.cmd 실행")}}}{{{Row("iPhone · iPad",ios,"IPA 파일")}}}{{{Row("Android",android,"APK 설치")}}}{{{Row("Mac",mac,"압축을 풀고 아나를 응용 프로그램 폴더로 옮기세요. 처음 열 때 ‘확인되지 않은 개발자’ 경고가 뜨면 시스템 설정 › 개인정보 보호 및 보안 맨 아래의 [그래도 열기]를 누르세요.")}}}
+<section class="how"><h2>처음 쓸 때</h2><ol><li>위에서 내 기기에 맞는 앱을 내려받아 설치하세요.</li><li>처음 열면 초대 코드를 묻습니다. 받은 초대 코드를 넣으면 바로 시작합니다.</li><li>등록하지 않은 사람과는 근처 기기(Bluetooth)나 QR로 주고받습니다.</li></ol></section>
+<p class="foot">Made by Hanidayo · Built with Claude</p>
 </main></body></html>
 """);
-});
+};
+app.MapGet("/download",downloadPage);
+app.MapGet("/_ahna/download",downloadPage);
 app.MapPut("/_ahna/admin/update/{name}",async (string name,HttpContext c)=>
 {
     if(publishKey.Length==0){c.Response.StatusCode=404;return;}
@@ -497,14 +502,17 @@ bool IsAdmin(HttpContext c)
     return parts.Length==2&&long.TryParse(parts[0],out var expires)&&expires>DateTimeOffset.UtcNow.ToUnixTimeSeconds()&&CryptographicOperations.FixedTimeEquals(Encoding.ASCII.GetBytes(parts[1]),Encoding.ASCII.GetBytes(AdminSignature(expires)));
 }
 bool AdminDevice(string id)=>Guid.TryParseExact(id,"N",out _)&&id==id.ToLowerInvariant()&&registry.Known(id);
-app.MapGet("/_ahna/admin",(HttpContext c)=>
+// 관리자 페이지: {서버}/admin (예전 /_ahna/admin 도 그대로). 화면이 쓰는 API는 /_ahna/admin/* 그대로입니다.
+Func<HttpContext,IResult> adminPage=c=>
 {
     if(adminPassword.Length==0)return Results.NotFound();
     var nonce=Convert.ToBase64String(RandomNumberGenerator.GetBytes(16));
     c.Response.Headers["Content-Security-Policy"]=$"default-src 'none'; script-src 'nonce-{nonce}'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
     c.Response.Headers["X-Frame-Options"]="DENY";
     return Results.Content(AdminPage.Html(nonce),"text/html; charset=utf-8");
-});
+};
+app.MapGet("/admin",adminPage);
+app.MapGet("/_ahna/admin",adminPage);
 app.MapPost("/_ahna/admin/login",async (HttpContext c)=>
 {
     if(adminPassword.Length==0||c.Request.Headers["X-Ahna-Admin"]!="1"){c.Response.StatusCode=404;return;}

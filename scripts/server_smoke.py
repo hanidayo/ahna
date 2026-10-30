@@ -58,6 +58,12 @@ async def main():
 
     page = requests.get(BASE + "/_ahna/admin")
     check(page.ok and "아나 관리" in page.text and "nonce-" in page.headers.get("Content-Security-Policy", ""), "관리자 화면 열림")
+    short = requests.get(BASE + "/admin")
+    check(short.ok and "아나 관리" in short.text, "짧은 주소 /admin 열림")
+    dl = requests.get(BASE + "/download")
+    check(dl.ok and "아나 내려받기" in dl.text and "처음 쓸 때" in dl.text, "짧은 주소 /download 열림")
+    d = requests.get(BASE + "/d", allow_redirects=False)
+    check(d.status_code in (301, 302, 307, 308) and d.headers.get("Location", "").endswith("/download"), "/d → /download")
     check(api("/api/state").status_code == 401, "로그인 전에는 막힘")
     check(api("/login", {"password": "wrong-password"}).status_code == 403, "틀린 비밀번호 거부")
     check(api("/login", {"password": PASSWORD}).ok, "관리자 로그인")
