@@ -468,7 +468,16 @@ async Task<bool> Notice(string computer,string text,string action)
         return true;
     }catch{return false;}
 }
-void Kick(string computer){if(controls.TryGetValue(computer,out var r))try{r.Socket.Abort();}catch{}}
+// 연결을 바로 끊으면(RST) 방금 보낸 알림이 사라질 수 있어, 닫기 신호를 보낸 뒤 잠시 기다렸다 끊습니다.
+void Kick(string computer)
+{
+    if(!controls.TryGetValue(computer,out var r))return;
+    _=Task.Run(async()=>
+    {
+        try{using var t=new CancellationTokenSource(TimeSpan.FromSeconds(3));await r.Send.WaitAsync(t.Token);try{await r.Socket.CloseOutputAsync(WebSocketCloseStatus.PolicyViolation,"",t.Token);}finally{r.Send.Release();}}catch{}
+        await Task.Delay(1500);try{r.Socket.Abort();}catch{}
+    });
+}
 
 // 전체 공지: 연결한 기기가 받아 갑니다. 새 공지가 생기거나 지워지면 온라인 기기에 "notices" 알림을 보내 다시 받아 가게 합니다.
 app.MapGet("/_ahna/notices",(HttpContext c)=>TokenComputer(c) is null?Results.Unauthorized():Results.Json(new{notices=registry.Notices()}));
