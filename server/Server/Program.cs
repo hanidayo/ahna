@@ -261,13 +261,20 @@ app.MapPut("/_ahna/drop/{token}/{index:int}",async (string token,int index,HttpC
 {
     var d=OwnDrop(c,token);
     if(d is null||index<0||index>=d.Files.Length||d.State!="uploading"){c.Response.StatusCode=404;return;}
-    if(c.Request.ContentLength!=d.Files[index].Bytes){c.Response.StatusCode=411;return;}
+    // 큰 파일은 조각으로: X-Ahna-Offset(지금까지 올린 양)부터 이어 붙입니다.
+    var offset=0L;
+    if(c.Request.Headers["X-Ahna-Offset"].ToString() is { Length: >0 } offsetText&&!long.TryParse(offsetText,System.Globalization.NumberStyles.None,System.Globalization.CultureInfo.InvariantCulture,out offset)){c.Response.StatusCode=400;return;}
+    var length=c.Request.ContentLength??-1;
     var target=Path.Combine(dropDir,token,index.ToString(System.Globalization.CultureInfo.InvariantCulture));
-    await using(var file=new FileStream(target,FileMode.Create,FileAccess.Write,FileShare.None,1<<16,FileOptions.Asynchronous))await c.Request.Body.CopyToAsync(file,c.RequestAborted);
-    if(new FileInfo(target).Length!=d.Files[index].Bytes){c.Response.StatusCode=400;return;}
-    lock(d){d.Uploaded[index]=true;if(d.Uploaded.All(x=>x)&&d.State=="uploading")d.State="ready";}
-    Count(d.Owner,d.Files[index].Bytes);
-    await c.Response.WriteAsJsonAsync(new{state=d.State});
+    var have=File.Exists(target)?new FileInfo(target).Length:0;
+    if(offset!=have||length<0||offset+length>d.Files[index].Bytes||offset==0&&length==0&&d.Files[index].Bytes>0){c.Response.StatusCode=409;await c.Response.WriteAsJsonAsync(new{received=have});return;}
+    await using(var file=new FileStream(target,offset==0?FileMode.Create:FileMode.Append,FileAccess.Write,FileShare.None,1<<16,FileOptions.Asynchronous))await c.Request.Body.CopyToAsync(file,c.RequestAborted);
+    var size=new FileInfo(target).Length;
+    if(size!=offset+length){c.Response.StatusCode=400;return;}
+    Count(d.Owner,length);
+    if(size==d.Files[index].Bytes)lock(d){d.Uploaded[index]=true;if(d.Uploaded.All(x=>x)&&d.State=="uploading")d.State="ready";}
+    await c.Response.WriteAsJsonAsync(new{state=d.State,received=size});
+});
 });
 app.MapGet("/_ahna/drop/{token}",(string token,HttpContext c)=>OwnDrop(c,token) is { } d?Results.Json(new{state=d.State,completed=d.Completed.Count(x=>x),count=d.Files.Length}):Results.NotFound());
 app.MapPost("/_ahna/drop/{token}/cancel",(string token,HttpContext c)=>{if(OwnDrop(c,token) is { } d)EndDrop(d,"declined");return Results.Ok();});
@@ -294,6 +301,7 @@ async Task ServeDrop(HttpContext c,string path)
     }
     c.Response.StatusCode=404;
 }
+var chunks=new ConcurrentDictionary<string,ChunkUpload>();
 app.MapFallback("/{**path}",async (HttpContext c)=>
 {
     var path=c.Request.Path+c.Request.QueryString.ToString();
@@ -311,6 +319,13 @@ app.MapFallback("/{**path}",async (HttpContext c)=>
     if(length<0 || length>Wire.MaxFile){c.Response.StatusCode=413;return;}
     if(c.Request.Method=="GET" && length!=0){c.Response.StatusCode=400;return;}
     if(!Wire.LargeBody(path) && length>16384){c.Response.StatusCode=413;return;}
+    // 큰 파일 나눠 올리기: 첫 조각에 X-Ahna-Total(전체 크기)을 붙이면 받는 기기로는 한 요청처럼 이어서 보내고,
+    // 나머지 조각은 PUT /_ahna/chunk/{upload}로 받습니다(Cloudflare 같은 프록시의 요청 크기 제한을 피함).
+    long total=length;
+    if(c.Request.Headers["X-Ahna-Total"].ToString() is { Length: >0 } totalText)
+    {
+        if(c.Request.Method!="POST"||!Wire.LargeBody(path)||!long.TryParse(totalText,System.Globalization.NumberStyles.None,System.Globalization.CultureInfo.InvariantCulture,out total)||total<length||total>Wire.MaxFile||length<1){c.Response.StatusCode=400;return;}
+    }
     // Keep pair routing bounded and rate-limited, even when a PIN matches no PC.
     string? pinHash=null;
     if(c.Request.Method=="POST"&&path.Split('?')[0]=="/api/pair")
@@ -364,7 +379,7 @@ app.MapFallback("/{**path}",async (HttpContext c)=>
     if(!await requests.WaitAsync(0,c.RequestAborted)){c.Response.StatusCode=429;return;}
     var id=Guid.NewGuid().ToString("N");
     using var timeout=CancellationTokenSource.CreateLinkedTokenSource(c.RequestAborted);timeout.CancelAfter(Wire.LargeBody(path) || path.StartsWith("/api/download/") || guestHost is not null && path.Split('?')[0].Contains("/file/")?TimeSpan.FromMinutes(45):TimeSpan.FromSeconds(40));
-    var ct=timeout.Token;WebSocket? data=null;
+    var ct=timeout.Token;WebSocket? data=null;var handedOff=false;
     try
     {
         var bridge=selected.Socket;
@@ -372,24 +387,68 @@ app.MapFallback("/{**path}",async (HttpContext c)=>
         var waiting=new TaskCompletionSource<WebSocket>(TaskCreationOptions.RunContinuationsAsynchronously);pending[id]=(waiting,selected);
         await selected.Send.WaitAsync(ct);try{await Wire.SendJson(bridge,new{id},ct);}finally{selected.Send.Release();}
         data=await waiting.Task.WaitAsync(TimeSpan.FromSeconds(20),ct);
-        await Wire.SendJson(data,new RequestHead(c.Request.Method,path,length,c.Request.Headers.Cookie.ToString(),c.Request.ContentType),ct);
+        await Wire.SendJson(data,new RequestHead(c.Request.Method,path,total,c.Request.Headers.Cookie.ToString(),c.Request.ContentType),ct);
         var head=await Wire.ReadJson<ResponseHead>(data,ct);
-        if(head.Status==100){await Wire.SendBody(data,c.Request.Body,length,ct);head=await Wire.ReadJson<ResponseHead>(data,ct);}
-        if(head.Status is <200 or >599 || head.Length is null or <0 || head.Length>Wire.MaxFile)throw new IOException("Invalid response");
-        c.Response.StatusCode=head.Status;c.Response.ContentLength=head.Length;
-        c.Response.Headers["X-Ahna-Computer"]=selected.Id;
-        var allowed=new HashSet<string>(StringComparer.OrdinalIgnoreCase){"Content-Type","Content-Disposition","Content-Security-Policy","Set-Cookie","Cache-Control"};
-        // Guest responses never set cookies on the NAS origin.
-        if(guestHost is not null)allowed.Remove("Set-Cookie");
-        if(head.Headers is not null)foreach(var h in head.Headers)if(allowed.Contains(h.Key))c.Response.Headers[h.Key]=h.Value;
-        if(c.Response.Headers.TryGetValue("Set-Cookie",out var cookies))c.Response.Headers["Set-Cookie"]=cookies.Select(v=>v+"; Secure").ToArray();
-        if(head.Status is >=200 and <300 && path.Split('?')[0] is "/api/pair" or "/api/state")
-            c.Response.Cookies.Append("ahna-computer",selected.Id,new CookieOptions{HttpOnly=true,Secure=!testing,SameSite=SameSiteMode.Strict,Path="/",MaxAge=TimeSpan.FromDays(30)});
-        await Wire.ReceiveBody(data,c.Response.Body,head.Length.Value,ct);
-        Count(selected.Id,length+head.Length.Value);
-        await Wire.SendJson(data,new{received=true},ct);
+        if(head.Status==100)
+        {
+            await Wire.SendBody(data,c.Request.Body,length,ct);
+            if(total>length)
+            {
+                // 첫 조각만 보냄: 이 연결을 나눠 올리기로 넘기고, 나머지 조각을 기다립니다.
+                var upload=Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
+                chunks[upload]=new ChunkUpload(selected,data,path,guestHost,total){Sent=length,Touched=DateTimeOffset.UtcNow};
+                data=null;handedOff=true;
+                c.Response.StatusCode=202;await c.Response.WriteAsJsonAsync(new{upload,received=length});return;
+            }
+            head=await Wire.ReadJson<ResponseHead>(data,ct);
+        }
+        await Relay(c,data,head,selected,path,guestHost,total,ct);
     }
-    finally{pending.TryRemove(id,out _);data?.Abort();data?.Dispose();requests.Release();}
+    finally{pending.TryRemove(id,out _);data?.Abort();data?.Dispose();if(!handedOff)requests.Release();}
+});
+// 받는 기기의 응답을 그대로 돌려줍니다.
+async Task Relay(HttpContext c,WebSocket data,ResponseHead head,RelayConnection selected,string path,string? guestHost,long sent,CancellationToken ct)
+{
+    if(head.Status is <200 or >599 || head.Length is null or <0 || head.Length>Wire.MaxFile)throw new IOException("Invalid response");
+    c.Response.StatusCode=head.Status;c.Response.ContentLength=head.Length;
+    c.Response.Headers["X-Ahna-Computer"]=selected.Id;
+    var allowed=new HashSet<string>(StringComparer.OrdinalIgnoreCase){"Content-Type","Content-Disposition","Content-Security-Policy","Set-Cookie","Cache-Control"};
+    // Guest responses never set cookies on the NAS origin.
+    if(guestHost is not null)allowed.Remove("Set-Cookie");
+    if(head.Headers is not null)foreach(var h in head.Headers)if(allowed.Contains(h.Key))c.Response.Headers[h.Key]=h.Value;
+    if(c.Response.Headers.TryGetValue("Set-Cookie",out var cookies))c.Response.Headers["Set-Cookie"]=cookies.Select(v=>v+"; Secure").ToArray();
+    if(head.Status is >=200 and <300 && path.Split('?')[0] is "/api/pair" or "/api/state")
+        c.Response.Cookies.Append("ahna-computer",selected.Id,new CookieOptions{HttpOnly=true,Secure=!testing,SameSite=SameSiteMode.Strict,Path="/",MaxAge=TimeSpan.FromDays(30)});
+    await Wire.ReceiveBody(data,c.Response.Body,head.Length.Value,ct);
+    Count(selected.Id,sent+head.Length.Value);
+    await Wire.SendJson(data,new{received=true},ct);
+}
+// 나눠 올리기의 다음 조각: X-Ahna-Offset은 지금까지 보낸 양과 같아야 합니다. 마지막 조각이면 받는 기기의 응답을 돌려줍니다.
+void EndChunk(string upload,ChunkUpload u){if(!chunks.TryRemove(upload,out _))return;try{u.Data.Abort();u.Data.Dispose();}catch{}requests.Release();}
+_=Task.Run(async()=>{while(true){await Task.Delay(TimeSpan.FromSeconds(30));foreach(var item in chunks)if(DateTimeOffset.UtcNow-item.Value.Touched>TimeSpan.FromMinutes(3)&&item.Value.Gate.CurrentCount==1)EndChunk(item.Key,item.Value);}});
+app.MapPut("/_ahna/chunk/{upload}",async (string upload,HttpContext c)=>
+{
+    if(!chunks.TryGetValue(upload,out var u)){c.Response.StatusCode=404;await c.Response.WriteAsJsonAsync(new{error="전송이 끊겼습니다. 처음부터 다시 보내 주세요."});return;}
+    if(!await u.Gate.WaitAsync(0)){c.Response.StatusCode=409;return;}
+    var finished=false;
+    try
+    {
+        var length=c.Request.ContentLength??-1;
+        if(!long.TryParse(c.Request.Headers["X-Ahna-Offset"].ToString(),System.Globalization.NumberStyles.None,System.Globalization.CultureInfo.InvariantCulture,out var offset)||offset!=u.Sent||length<1||u.Sent+length>u.Total)
+        {c.Response.StatusCode=409;await c.Response.WriteAsJsonAsync(new{error="조각 순서가 맞지 않습니다.",received=u.Sent});return;}
+        using var timeout=CancellationTokenSource.CreateLinkedTokenSource(c.RequestAborted);timeout.CancelAfter(TimeSpan.FromMinutes(45));var ct=timeout.Token;
+        try
+        {
+            await Wire.SendBody(u.Data,c.Request.Body,length,ct);
+            u.Sent+=length;u.Touched=DateTimeOffset.UtcNow;
+            if(u.Sent<u.Total){c.Response.StatusCode=202;await c.Response.WriteAsJsonAsync(new{upload,received=u.Sent});return;}
+            finished=true;
+            var head=await Wire.ReadJson<ResponseHead>(u.Data,ct);
+            await Relay(c,u.Data,head,u.Bridge,u.Path,u.GuestHost,u.Total,ct);
+        }
+        catch{finished=true;throw;}
+    }
+    finally{u.Gate.Release();if(finished)EndChunk(upload,u);}
 });
 // 사용량: 서버를 거친 양을 그 기기 몫으로 더하고, 오늘 처음 한도를 넘으면 그 기기 앱에 알립니다.
 bool OverLimit(string computer)=>registry.Enforce&&registry.Used(computer)>=registry.LimitBytes;
@@ -530,6 +589,14 @@ await app.RunAsync();
 sealed record RelayConnection(string Id,WebSocket Socket,string PinHash,bool Notices=false,bool Board=false)
 {
     public SemaphoreSlim Send { get; }=new(1,1);
+}
+
+sealed class ChunkUpload(RelayConnection bridge,WebSocket data,string path,string? guestHost,long total)
+{
+    public RelayConnection Bridge{get;}=bridge; public WebSocket Data{get;}=data; public string Path{get;}=path; public string? GuestHost{get;}=guestHost;
+    public long Total{get;}=total; public long Sent{get;set;}
+    public DateTimeOffset Touched{get;set;}
+    public SemaphoreSlim Gate{get;}=new(1,1);
 }
 
 sealed class Drop((string Name,long Bytes)[] files)

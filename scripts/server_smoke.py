@@ -68,6 +68,45 @@ async def main():
     r = api(f"/api/device/{cid}/notice", {"text": "안녕하세요"}); check(r.ok and r.json()["delivered"], "알림 보내기")
     n = await notice(ws); check(n["type"] == "notice" and n["action"] == "message" and "안녕하세요" in n["text"], "앱이 알림 받음")
 
+    # 큰 파일 나눠 올리기: 가짜 받는 기기(호스트)가 /api/upload를 한 요청으로 받는지 확인
+    hid = uuid.uuid4().hex; htoken = join(hid, "받는 PC").json()["token"]
+    hws = await websockets.connect(WS + "/_bridge/control", additional_headers={"Authorization": "Bearer " + htoken, "X-Ahna-Computer": hid})
+    await hws.send(json.dumps({"type": "ping"}))
+    got = {}
+    async def host():
+        msg = json.loads(await hws.recv())
+        data = await websockets.connect(WS + "/_bridge/data/" + msg["id"], additional_headers={"Authorization": "Bearer " + htoken})
+        head = json.loads(await data.recv()); got["head"] = head
+        await data.send(json.dumps({"Status": 100}))
+        n = 0; h = __import__("hashlib").sha256()
+        while n < head["Length"]:
+            b = await data.recv(); n += len(b); h.update(b)
+        got["bytes"] = n; got["sha"] = h.hexdigest()
+        await data.send(json.dumps({"Status": 200, "Length": 2, "Headers": {"Content-Type": ["text/plain"]}}))
+        await data.send(b"ok"); await data.recv(); await data.close()
+    task = asyncio.create_task(host())
+    piece = 3 * 1024 * 1024; blob = os.urandom(piece * 2 + 12345)
+    loop = asyncio.get_running_loop()
+    first = await loop.run_in_executor(None, lambda: requests.post(BASE + "/api/upload?batch=x&path=big.bin", data=blob[:piece], headers={"X-Ahna-Computer": hid, "X-Ahna-Total": str(len(blob)), "Content-Type": "application/octet-stream"}))
+    check(first.status_code == 202 and first.json()["received"] == piece, "첫 조각 → 나눠 올리기 시작")
+    up = first.json()["upload"]
+    bad = await loop.run_in_executor(None, lambda: requests.put(f"{BASE}/_ahna/chunk/{up}", data=b"x", headers={"X-Ahna-Offset": "0"}))
+    check(bad.status_code == 409, "잘못된 위치의 조각은 거부")
+    r2 = await loop.run_in_executor(None, lambda: requests.put(f"{BASE}/_ahna/chunk/{up}", data=blob[piece:piece * 2], headers={"X-Ahna-Offset": str(piece)}))
+    check(r2.status_code == 202, "둘째 조각")
+    r3 = await loop.run_in_executor(None, lambda: requests.put(f"{BASE}/_ahna/chunk/{up}", data=blob[piece * 2:], headers={"X-Ahna-Offset": str(piece * 2)}))
+    await asyncio.wait_for(task, 20)
+    check(r3.status_code == 200 and r3.text == "ok", "마지막 조각 → 받는 기기 응답")
+    check(got["bytes"] == len(blob) and got["sha"] == __import__("hashlib").sha256(blob).hexdigest() and got["head"]["Length"] == len(blob), "받는 기기가 전체를 한 번에 받음")
+    await hws.close()
+
+    # 근처 기기로 맡기기(drop)도 조각으로
+    dauth = {"Authorization": "Bearer " + token}
+    r = requests.post(BASE + "/_ahna/drop", json={"sender": "테스트", "code": "34", "files": [{"name": "d.bin", "bytes": 10}]}, headers=dauth); dtok = r.json()["token"]
+    check(requests.put(f"{BASE}/_ahna/drop/{dtok}/0", data=b"12345", headers={**dauth, "X-Ahna-Offset": "0"}).json()["state"] == "uploading", "맡기기 첫 조각")
+    check(requests.put(f"{BASE}/_ahna/drop/{dtok}/0", data=b"67890", headers={**dauth, "X-Ahna-Offset": "5"}).json()["state"] == "ready", "맡기기 마지막 조각")
+    check(requests.get(f"{BASE}/s/{'0'*32}/{dtok}/file/0").content == b"1234567890", "맡긴 파일 그대로 받기")
+
     # 전체 공지: 만들면 온라인 기기에 "notices" 알림 → 기기가 받아 가서 읽음 표시
     r = api("/api/notices", {"text": "점검 안내\n오늘 밤 12시"}); check(r.ok, "공지 보내기"); nid = r.json()["id"]
     n = await notice(ws); check(n["action"] == "notices", "공지 알림")
