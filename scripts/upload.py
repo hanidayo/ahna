@@ -23,7 +23,7 @@ for attempt in range(3):
     try:
         with path.open("rb") as body:
             req = urllib.request.Request(f"{server}/_ahna/admin/update/{name}", data=body, method="PUT",
-                                         headers={"Authorization": "Bearer " + key, "Content-Type": "application/octet-stream", "Content-Length": str(size)})
+                                         headers={"Authorization": "Bearer " + key, "Content-Type": "application/octet-stream", "Content-Length": str(size), "User-Agent": "Ahna-Publisher/1.0"})
             with urllib.request.urlopen(req, timeout=1800) as r: r.read()
         break
     except Exception as e:
