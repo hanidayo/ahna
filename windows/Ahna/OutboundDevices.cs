@@ -611,7 +611,7 @@ internal sealed class OutboundDevices : TransferServer.IExternalDevices, IDispos
 		using (await Request(p, HttpMethod.Post, "/api/upload?kind=clipboard&batch=" + Guid.NewGuid(), new StringContent(text, Encoding.UTF8, "text/plain")))
 		{
 		}
-		server.RecordExternal("send", "클립보드 텍스트", Encoding.UTF8.GetByteCount(text), Id(p), p.Name, "텍스트 전송 완료");
+		server.RecordExternal("send", "클립보드 텍스트", Encoding.UTF8.GetByteCount(text), Id(p), p.Name, "텍스트 전송 완료", preview: TransferServer.TextPreview(text));
 	}
 
 	public async Task<int> PickAndSendFilesAsync(string id)

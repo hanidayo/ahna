@@ -219,11 +219,13 @@ public sealed class TransferServer : IAsyncDisposable
         lock (gate) { settings.SavePath = path; Util.SaveJson(Path.Combine(data, "settings.json"), settings); Settings = settings; }
         bridge?.Reload();
     }
-    void Record(string direction, string name, long bytes, Device device, string status)
+    /// 전송 기록에 보일 글자 미리보기(한 줄, 앞 80자)
+    public static string TextPreview(string text) { var line = string.Join(' ', text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)); return line.Length > 80 ? line[..80] + "…" : line; }
+    void Record(string direction, string name, long bytes, Device device, string status, string? preview = null)
     {
         lock (gate)
         {
-            history.Insert(0, new(Guid.NewGuid().ToString("N"), DateTimeOffset.UtcNow, direction, name, bytes, device.Name, status, device.Id));
+            history.Insert(0, new(Guid.NewGuid().ToString("N"), DateTimeOffset.UtcNow, direction, name, bytes, device.Name, status, device.Id, preview));
             if (history.Count > 20) history.RemoveRange(20, history.Count - 20);
             Util.SaveJson(Path.Combine(data, "history.json"), history);
         }
@@ -639,16 +641,16 @@ public sealed class TransferServer : IAsyncDisposable
     }
     // Used by the host's outbound client so files and text from added devices show up
     // in the same history and clipboard lists as everything else.
-    public void RecordExternal(string direction, string name, long bytes, string deviceId, string deviceName, string status, bool notify = false)
+    public void RecordExternal(string direction, string name, long bytes, string deviceId, string deviceName, string status, bool notify = false, string? preview = null)
     {
-        Record(direction, name, bytes, new Device(deviceId, deviceName, false), status);
+        Record(direction, name, bytes, new Device(deviceId, deviceName, false), status, preview);
         if (notify && direction == "receive") { try { Received?.Invoke($"{deviceName} · {name}"); } catch { } }
     }
     public void AddExternalClipboard(string text, string deviceId, string deviceName)
     {
         ValidateClipboard(text);
         var message = StoreClipboard(text, deviceName, "windows");
-        Record("receive", "클립보드 텍스트", message.Bytes, new Device(deviceId, deviceName, false), "텍스트 수신 완료");
+        Record("receive", "클립보드 텍스트", message.Bytes, new Device(deviceId, deviceName, false), "텍스트 수신 완료", TextPreview(text));
         try { ClipboardReceived?.Invoke(deviceName); } catch { }
     }
     object OptionsSnapshot()
@@ -709,7 +711,7 @@ public sealed class TransferServer : IAsyncDisposable
             catch (DecoderFallbackException) { return Results.BadRequest(); }
             ValidateClipboard(text);
             var message = StoreClipboard(text, d.Name, "windows");
-            Record("receive", "클립보드 텍스트", message.Bytes, d, "텍스트 수신 완료");
+            Record("receive", "클립보드 텍스트", message.Bytes, d, "텍스트 수신 완료", TextPreview(text));
             try { ClipboardReceived?.Invoke(d.Name); } catch { }
             return Results.Ok(new { message.Id });
         }
@@ -845,7 +847,7 @@ public sealed class TransferServer : IAsyncDisposable
         ValidateClipboard(text);
         var device = sessions.Values.FirstOrDefault(x => x.Id == target && IsReceiving(x, DateTimeOffset.UtcNow)) ?? throw new ArgumentException("받을 기기에서 아나를 열고 연결을 확인하세요.");
         var message = StoreClipboard(text, Environment.MachineName, target);
-        Record("send", "클립보드 텍스트", message.Bytes, device, "텍스트 전송 준비 완료");
+        Record("send", "클립보드 텍스트", message.Bytes, device, "텍스트 전송 준비 완료", TextPreview(text));
         return message;
     }
     public ClipboardMessage[] ClipboardInbox(string target = "windows")

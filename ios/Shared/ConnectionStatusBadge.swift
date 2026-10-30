@@ -254,6 +254,21 @@ struct DeviceIconTile: View {
 }
 
 enum AhnaText {
+    /// 2026. 10. 30. 오후 12:51
+    static func stamp(_ date: Date) -> String {
+        let f = DateFormatter(); f.locale = Locale(identifier: "ko_KR"); f.dateFormat = "yyyy. M. d. a h:mm"; return f.string(from: date)
+    }
+    /// 컴퓨터가 보낸 ISO 시각(소수점 7자리까지)을 읽습니다.
+    static func date(_ iso: String) -> Date? {
+        var text = iso
+        if let dot = text.firstIndex(of: "."), let end = text[dot...].firstIndex(where: { !$0.isNumber && $0 != "." }) {
+            let digits = text[text.index(after: dot)..<end]
+            text.replaceSubrange(dot..<end, with: "." + String(digits.prefix(3)).padding(toLength: 3, withPad: "0", startingAt: 0))
+        }
+        let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let d = f.date(from: text) { return d }
+        f.formatOptions = [.withInternetDateTime]; return f.date(from: iso)
+    }
     /// 기기 이름으로 아이콘을 고릅니다(기기 종류 정보가 없어 이름으로 추정).
     static func deviceSymbol(_ name: String) -> String {
         let n = name.lowercased()

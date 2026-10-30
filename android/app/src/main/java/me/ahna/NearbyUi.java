@@ -810,6 +810,7 @@ final class NearbyUi implements NearbyRadio.Listener, Protocol.GuestListener {
             case "done":
                 o.phase = "done";
                 a.pending.removeAll(o.files); a.renderPending();
+                for (Protocol.GuestFile f : t.files) a.logTransfer(true, f.name, o.deviceName, f.bytes, null, null);
                 break;
             case "declined": o.phase = "declined"; break;
             case "expired": case "missing":

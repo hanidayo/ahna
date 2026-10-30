@@ -458,6 +458,7 @@ public class MainActivity extends Activity {
         body.addView(textCard(), ui.lp(-1, -2, 0, 14, 0, 0));
         body.addView(inboxCard(), ui.lp(-1, -2, 0, 14, 0, 0));
         body.addView(historyCard(), ui.lp(-1, -2, 0, 14, 0, 0));
+        body.addView(transferCard(), ui.lp(-1, -2, 0, 14, 0, 0));
     }
 
     void homeTablet(LinearLayout body) {
@@ -482,6 +483,7 @@ public class MainActivity extends Activity {
         b.addView(textCard(), new LinearLayout.LayoutParams(-1, -2));
         b.addView(inboxCard(), ui.lp(-1, -2, 0, 16, 0, 0));
         c.addView(historyCard(), new LinearLayout.LayoutParams(-1, -2));
+        c.addView(transferCard(), ui.lp(-1, -2, 0, 16, 0, 0));
     }
 
     /** 태블릿 세로(2열): 왼쪽 보낼 기기 · 파일 보내기 · 글자 보내기, 오른쪽 받은 글자 · 받은 파일. */
@@ -506,6 +508,7 @@ public class MainActivity extends Activity {
         a.addView(textCard(), ui.lp(-1, -2, 0, 16, 0, 0));
         b.addView(inboxCard(), new LinearLayout.LayoutParams(-1, -2));
         b.addView(historyCard(), ui.lp(-1, -2, 0, 16, 0, 0));
+        b.addView(transferCard(), ui.lp(-1, -2, 0, 16, 0, 0));
     }
 
     LinearLayout fileCard() {
@@ -1294,7 +1297,9 @@ public class MainActivity extends Activity {
             texts.addView(Ui.oneLine(ui.text(e.sender + (when.isEmpty() ? "" : " · " + when), 12, ui.faint, Ui.REGULAR)));
             String preview = e.preview.replace('\n', ' ').trim();
             texts.addView(Ui.oneLine(ui.text(preview.isEmpty() ? "받은 글자" : preview, 14, ui.text, Ui.REGULAR)));
+            if (e.at > 0) texts.addView(ui.text(Ui.stamp(e.at), 12, ui.faint, Ui.REGULAR), ui.lp(-2, -2, 0, 2, 0, 0));
             row.addView(texts, ui.flex(1));
+            if (!e.preview.isEmpty()) logTransfer(false, "글자", e.sender, e.preview.getBytes(java.nio.charset.StandardCharsets.UTF_8).length, e.preview, "clip:" + e.key);
             Button copy = ui.soft("복사");
             copy.setPadding(dp(14), 0, dp(14), 0);
             copy.setContentDescription(e.sender + "에게서 받은 글자 복사");
@@ -1335,6 +1340,7 @@ public class MainActivity extends Activity {
             for (int j = 0; j < old.length() && next.length() < 10; j++) next.put(old.getJSONObject(j));
             prefs.edit().putString("receivedHistory060", next.toString()).apply();
             runOnUiThread(this::updateHistory);
+            logTransfer(false, display, from == null || from.isEmpty() ? "기기" : from, bytes, null, null);
         } catch (Exception ignored) {}
     }
 
@@ -1380,6 +1386,72 @@ public class MainActivity extends Activity {
                 TextView empty = ui.text("아직 받은 파일 기록이 없습니다.", 13, ui.faint, Ui.REGULAR);
                 empty.setPadding(0, dp(6), 0, dp(6));
                 historyBox.addView(empty);
+            }
+        } catch (Exception ignored) {}
+    }
+
+    // ── 전송 기록: 이 기기에서 보내고 받은 파일·글자 (최근 30개) ──
+    LinearLayout transferBox;
+    static String textPreview(String text) { String line = text.trim().replaceAll("\\s+", " "); return line.length() > 80 ? line.substring(0, 80) + "…" : line; }
+    /** key: 같은 일을 두 번 적지 않도록(받은 글자 ID 등) */
+    synchronized void logTransfer(boolean sent, String name, String device, long bytes, String text, String key) {
+        try {
+            if (key != null) {
+                JSONArray seen = new JSONArray(prefs.getString("transferLogSeen", "[]"));
+                for (int i = 0; i < seen.length(); i++) if (key.equals(seen.optString(i))) return;
+                JSONArray nextSeen = new JSONArray(); nextSeen.put(key);
+                for (int i = 0; i < seen.length() && nextSeen.length() < 512; i++) nextSeen.put(seen.optString(i));
+                prefs.edit().putString("transferLogSeen", nextSeen.toString()).apply();
+            }
+            JSONArray old = new JSONArray(prefs.getString("transferLog", "[]")), next = new JSONArray();
+            JSONObject e = new JSONObject().put("sent", sent).put("name", name).put("device", device == null ? "" : device).put("bytes", bytes).put("at", System.currentTimeMillis());
+            if (text != null) e.put("preview", textPreview(text));
+            next.put(e);
+            for (int i = 0; i < old.length() && next.length() < 30; i++) next.put(old.getJSONObject(i));
+            prefs.edit().putString("transferLog", next.toString()).apply();
+            runOnUiThread(this::updateTransferLog);
+        } catch (Exception ignored) {}
+    }
+    LinearLayout transferCard() {
+        LinearLayout card = ui.card();
+        LinearLayout top = ui.row();
+        top.addView(ui.heading("전송 기록"), ui.flex(1));
+        TextView clear = ui.text("지우기", 13, ui.muted, Ui.REGULAR);
+        clear.setPadding(dp(8), dp(4), 0, dp(4)); clear.setClickable(true); clear.setFocusable(true);
+        clear.setOnClickListener(v -> { prefs.edit().putString("transferLog", "[]").apply(); updateTransferLog(); });
+        top.addView(clear);
+        card.addView(top, ui.lp(-1, -2, 0, 0, 0, 6));
+        transferBox = ui.column();
+        card.addView(transferBox, new LinearLayout.LayoutParams(-1, -2));
+        updateTransferLog();
+        return card;
+    }
+    void updateTransferLog() {
+        if (transferBox == null) return;
+        transferBox.removeAllViews();
+        try {
+            JSONArray list = new JSONArray(prefs.getString("transferLog", "[]"));
+            for (int j = 0; j < list.length() && j < 20; j++) {
+                JSONObject item = list.getJSONObject(j);
+                boolean sent = item.optBoolean("sent");
+                if (j > 0) transferBox.addView(ui.divider());
+                LinearLayout row = ui.row(); row.setGravity(Gravity.TOP);
+                row.setPadding(0, dp(8), 0, dp(8));
+                float box = tablet ? 36 : 34;
+                TextView arrow = ui.text(sent ? "↑" : "↓", 16, ui.muted, Ui.BOLD); arrow.setGravity(Gravity.CENTER); arrow.setBackgroundColor(ui.subtle);
+                row.addView(arrow, ui.lp(box, box, 0, 0, 10, 0));
+                LinearLayout texts = ui.column();
+                texts.addView(Ui.oneLine(ui.text(item.optString("name", "파일"), 13, ui.text, Ui.MEDIUM)));
+                String detail = item.has("preview") ? item.optString("preview") : Ui.size(item.optLong("bytes", -1));
+                texts.addView(Ui.oneLine(ui.text((sent ? "보냄" : "받음") + " · " + item.optString("device") + (detail.isEmpty() ? "" : " · " + detail), 12, ui.faint, Ui.REGULAR)));
+                texts.addView(ui.text(Ui.stamp(item.optLong("at")), 12, ui.faint, Ui.REGULAR));
+                row.addView(texts, ui.flex(1));
+                transferBox.addView(row, new LinearLayout.LayoutParams(-1, -2));
+            }
+            if (list.length() == 0) {
+                TextView empty = ui.text("보내거나 받으면 여기에 기록됩니다.", 13, ui.faint, Ui.REGULAR);
+                empty.setPadding(0, dp(6), 0, dp(6));
+                transferBox.addView(empty);
             }
         } catch (Exception ignored) {}
     }
@@ -1595,8 +1667,8 @@ public class MainActivity extends Activity {
         if (nearTarget() != null) { status("근처 기기로는 파일만 보낼 수 있습니다. 글자는 등록한 기기로 보내세요."); return; }
         Target t = selectedTarget();
         if (t == null) { status("받을 기기를 연결하세요."); return; }
-        Client c = t.client; String id = t.hostPeer;
-        work(() -> { if (c == null) server.sendClipboard(value, id); else c.sendClipboard(value); status("글자를 보냈습니다. 받은 기기에서 복사하세요."); });
+        Client c = t.client; String id = t.hostPeer; String device = t.name;
+        work(() -> { if (c == null) server.sendClipboard(value, id); else c.sendClipboard(value); status("글자를 보냈습니다. 받은 기기에서 복사하세요."); logTransfer(true, "글자", device, value.getBytes(java.nio.charset.StandardCharsets.UTF_8).length, value, null); });
     }
 
     void showSharePicker() {
@@ -1656,7 +1728,7 @@ public class MainActivity extends Activity {
         if (near != null) { if (pending.isEmpty()) status("보낼 파일을 선택하세요."); else nearby.send(near.id, new ArrayList<>(pending)); return; }
         Target t = selectedTarget();
         if (t == null || pending.isEmpty()) { status(t == null ? "받을 기기를 먼저 추가하세요." : "보낼 파일을 선택하세요."); return; }
-        String id = t.hostPeer; Client c = t.client; List<Uri> files = new ArrayList<>(pending);
+        String id = t.hostPeer; Client c = t.client; List<Uri> files = new ArrayList<>(pending); String device = t.name;
         work(() -> {
             int done = 0;
             for (Uri uri : files) {
@@ -1670,7 +1742,9 @@ public class MainActivity extends Activity {
                         byte[] buffer = new byte[65536]; long total = 0; int n;
                         while ((n = in.read(buffer)) >= 0) { total += n; if (total > Protocol.MAX) throw new IOException("파일 한 개는 최대 4 GiB입니다."); out.write(buffer, 0, n); }
                     }
+                    long sentBytes = staged.length();
                     if (c == null) server.queue(staged, display, id); else c.send(staged, display);
+                    logTransfer(true, display, device, sentBytes, null, null);
                     done++;
                     status(done + "/" + files.size() + "개 " + (c == null ? "전송 준비 완료 · 상대 저장 대기" : "상대 기기 저장 완료"));
                 } finally { staged.delete(); }

@@ -264,6 +264,7 @@ struct SendReceiveScreen: View {
     @ObservedObject var host: MobileHostModel
     @ObservedObject var nearby: NearbyCenter
     @ObservedObject private var history = ReceiveHistory.shared
+    @ObservedObject private var log = TransferLog.shared
     @State private var showingQR = false
     @State private var nearbySummary = ""
 
@@ -345,14 +346,14 @@ struct SendReceiveScreen: View {
                 HStack(alignment: .top, spacing: 16) {
                     VStack(spacing: 16) { targetCard; fileCard(regular: true) }.frame(maxWidth: .infinity, alignment: .top)
                     VStack(spacing: 16) { textCard(regular: true); clipsCard }.frame(maxWidth: .infinity, alignment: .top)
-                    VStack(spacing: 16) { filesCard(regular: true) }.frame(maxWidth: .infinity, alignment: .top)
+                    VStack(spacing: 16) { filesCard(regular: true); logCard(regular: true) }.frame(maxWidth: .infinity, alignment: .top)
                 }
                 .padding(.horizontal, 24).padding(.top, 4).padding(.bottom, 24)
             } else if columns == 2 {
                 // 왼쪽: 보낼 기기 · 파일 보내기 · 글자 보내기 / 오른쪽: 받은 글자 · 받은 파일
                 HStack(alignment: .top, spacing: 16) {
                     VStack(spacing: 16) { targetCard; fileCard(regular: true); textCard(regular: true) }.frame(maxWidth: .infinity, alignment: .top)
-                    VStack(spacing: 16) { clipsCard; filesCard(regular: true) }.frame(maxWidth: .infinity, alignment: .top)
+                    VStack(spacing: 16) { clipsCard; filesCard(regular: true); logCard(regular: true) }.frame(maxWidth: .infinity, alignment: .top)
                 }
                 .padding(.horizontal, 24).padding(.top, 4).padding(.bottom, 24)
             } else {
@@ -362,6 +363,7 @@ struct SendReceiveScreen: View {
                     textCard(regular: false)
                     clipsCard
                     filesCard(regular: false)
+                    logCard(regular: false)
                 }
                 .padding(16).padding(.bottom, 16)
             }
@@ -698,7 +700,10 @@ struct SendReceiveScreen: View {
         Task { @MainActor in
             do {
                 if !t.sendsThroughHost, let c = t.connection { try await c.sendClipboard(text) }
-                else if let peer = t.livePeer ?? t.peerIDs.first { host.engine?.sendText(text, target: peer) }
+                else if let peer = t.livePeer ?? t.peerIDs.first {
+                    host.engine?.sendText(text, target: peer)
+                    TransferLog.shared.record(sent: true, name: "글자", device: t.name, bytes: Int64(text.utf8.count), preview: TransferLog.preview(text))
+                }
                 else { throw AhnaError.message("받을 기기를 선택하세요.") }
                 notice = "글자를 보냈습니다. 받은 기기에서 복사하세요."
             } catch { notice = error.localizedDescription }
@@ -714,6 +719,8 @@ struct SendReceiveScreen: View {
         let connection: AhnaConnection?
         let clip: InboxClipboard?
         let text: String?
+        /// 받은 시각
+        let date: Date?
     }
 
     private var clipItems: [ClipItem] {
@@ -721,11 +728,11 @@ struct SendReceiveScreen: View {
         for c in client.connections {
             for clip in c.state?.clipboard ?? [] {
                 items.append(ClipItem(id: c.id.uuidString + "/" + clip.id, meta: clip.sender == c.hostName ? clip.sender : "\(clip.sender) · \(c.hostName)",
-                                      preview: clipPreview[clip.id], connection: c, clip: clip, text: nil))
+                                      preview: clipPreview[clip.id], connection: c, clip: clip, text: nil, date: AhnaText.date(clip.created)))
             }
         }
         for (index, clip) in host.clips.enumerated() {
-            items.append(ClipItem(id: "host/\(index)", meta: clip.0, preview: clip.1, connection: nil, clip: nil, text: clip.1))
+            items.append(ClipItem(id: "host/\(index)", meta: clip.0, preview: clip.1, connection: nil, clip: nil, text: clip.1, date: clip.2))
         }
         return items
     }
@@ -745,6 +752,9 @@ struct SendReceiveScreen: View {
                             .font(.system(size: 14))
                             .foregroundStyle(item.preview == nil ? AhnaPalette.muted : AhnaPalette.text)
                             .lineLimit(1)
+                        if let date = item.date {
+                            Text(AhnaText.stamp(date)).font(.system(size: 12)).foregroundStyle(AhnaPalette.faint).padding(.top, 2)
+                        }
                     }
                     Spacer(minLength: 4)
                     Button("복사") { copy(item) }
@@ -819,6 +829,43 @@ struct SendReceiveScreen: View {
             .padding(.top, 4)
             Text("최근 10개 · 오래된 기록부터 교체합니다. 목록 초기화는 저장된 파일을 지우지 않습니다.")
                 .font(.system(size: 12)).foregroundStyle(AhnaPalette.faint)
+        }
+        .ahnaCard()
+    }
+
+    // MARK: 전송 기록
+
+    private func logCard(regular: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline) {
+                CardTitle("전송 기록")
+                Spacer()
+                if !log.entries.isEmpty {
+                    Button("지우기") { log.clear() }.font(.system(size: 13)).foregroundStyle(AhnaPalette.muted).buttonStyle(.plain)
+                }
+            }
+            .padding(.bottom, 6)
+            if log.entries.isEmpty {
+                Text("보내거나 받으면 여기에 기록됩니다.").font(.system(size: 13)).foregroundStyle(AhnaPalette.faint).padding(.vertical, 6)
+            }
+            ForEach(Array(log.entries.prefix(20).enumerated()), id: \.element.id) { index, item in
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: item.sent ? "arrow.up" : "arrow.down").font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(AhnaPalette.muted)
+                        .frame(width: regular ? 36 : 34, height: regular ? 36 : 34)
+                        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(AhnaPalette.subtle))
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(item.name).font(.system(size: 13, weight: .medium)).lineLimit(1).truncationMode(.middle)
+                        Text("\(item.sent ? "보냄" : "받음") · \(item.device) · \(item.preview ?? AhnaText.bytes(item.bytes))")
+                            .font(.system(size: 12)).foregroundStyle(AhnaPalette.faint).lineLimit(1)
+                        Text(AhnaText.stamp(item.at)).font(.system(size: 12)).foregroundStyle(AhnaPalette.faint)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(.vertical, 8)
+                .accessibilityElement(children: .combine)
+                if index < min(log.entries.count, 20) - 1 { AhnaDivider() }
+            }
         }
         .ahnaCard()
     }

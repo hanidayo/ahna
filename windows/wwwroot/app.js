@@ -20,6 +20,8 @@ const FILE_ICON = ['M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z',
 const UP_ICON = ['M12 19V5', 'M5 12l7-7 7 7'];
 const DOWN_ICON = ['M12 5v14', 'M19 12l-7 7-7-7'];
 function fileIcon(paths = FILE_ICON, muted = false) { const s = node('span', undefined, 'fileIcon' + (muted ? ' muted' : '')); s.append(icon(paths)); return s; }
+// 2026. 10. 30. 오후 12:51
+const stamp = value => new Date(value).toLocaleString('ko-KR', { year:'numeric', month:'numeric', day:'numeric', hour:'numeric', minute:'2-digit' });
 function ago(value) {
   const t = new Date(value), diff = (Date.now() - t.getTime()) / 1000;
   if (!isFinite(diff)) return '';
@@ -89,7 +91,9 @@ function render(s) {
     const row = node('div',undefined,'fileRow'), meta = node('div',undefined,'fileMeta');
     const incoming = h.direction === 'receive';
     row.append(fileIcon(incoming ? DOWN_ICON : UP_ICON, true));
-    meta.append(node('strong',h.name),node('small',`${incoming ? '받음' : '보냄'} · ${h.device} · ${size(h.bytes)} · ${h.status} · ${new Date(h.at).toLocaleString()}`)); row.append(meta); $('history').append(row);
+    // 보냄 · 기기 · 글자 미리보기(또는 크기) / 시각
+    const failed = /실패|중단/.test(h.status || '');
+    meta.append(node('strong',h.name),node('small',`${incoming ? '받음' : '보냄'} · ${h.device} · ${h.preview ?? size(h.bytes)}${failed ? ' · ' + h.status : ''}`,'oneLine'),node('small',stamp(h.at))); row.append(meta); $('history').append(row);
   }
   if (!s.history.length) $('history').append(node('div','전송하면 여기에 기록됩니다.','empty'));
 }
@@ -478,7 +482,7 @@ function renderClipboard(s) {
   for (const item of s.clipboard) {
     const row = node('div', undefined, 'fileRow'), meta = node('div', undefined, 'fileMeta');
     const preview = node('span', clipboardTexts.has(item.id) ? (clipboardTexts.get(item.id).replace(/\s+/g, ' ').trim() || '(빈 글자)') : '불러오는 중…', 'clipText');
-    meta.append(node('small', `${item.sender} · ${ago(item.created)} · ${size(item.bytes)}`), preview);
+    meta.append(node('small', `${item.sender} · ${ago(item.created)} · ${size(item.bytes)}`), preview, node('small', stamp(item.created), 'clipTime'));
     const view = node('button', '보기', 'quiet neutral'); view.type = 'button'; view.onclick = () => showClipboard(item);
     const copy = node('button', '복사', 'copyBtn'); copy.type = 'button';
     copy.onclick = async () => {

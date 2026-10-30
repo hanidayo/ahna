@@ -543,7 +543,22 @@ enum ComputerVault {
         else if let http = response as? HTTPURLResponse { computerID = http.value(forHTTPHeaderField: "X-Ahna-Computer") ?? computerID }
         try credentialsChanged?()
         state = result; status = "연결됨 · \(hostName)"; revoked = false
+        #if canImport(UIKit)
+        if receive { logReceivedClipboard(result.clipboard ?? []) }
+        #endif
     }
+    #if canImport(UIKit)
+    /// 컴퓨터에서 받은 글자를 전송 기록에 남깁니다(미리보기용으로 내용도 가져옴).
+    private func logReceivedClipboard(_ clips: [InboxClipboard]) {
+        for clip in clips where !TransferLog.shared.seenKey("clip:" + clip.id) {
+            let host = hostName
+            Task { @MainActor [weak self] in
+                let text = try? await self?.clipboardText(clip)
+                TransferLog.shared.record(sent: false, name: "글자", device: clip.sender.isEmpty ? host : clip.sender, bytes: Int64(clip.bytes), preview: text.map(TransferLog.preview), key: "clip:" + clip.id)
+            }
+        }
+    }
+    #endif
     /// 새 인증 값을 받은 뒤: 해제 표시를 지우고 다음 상태 확인에서 다시 연결합니다.
     func markRestored() { revoked = false; status = "연결 확인 중…" }
     func poll() async {
@@ -570,6 +585,7 @@ enum ComputerVault {
         let (data, response) = try await session.data(for: request)
         try verify(response, data: data)
         progress = "\(hostName)에 글자를 보냈습니다. 컴퓨터의 클립보드 창에서 ‘복사’를 누르세요."
+        TransferLog.shared.record(sent: true, name: "글자", device: hostName, bytes: Int64(text.utf8.count), preview: TransferLog.preview(text))
     }
     func clipboardText(_ item: InboxClipboard) async throws -> String {
         guard state?.clipboard?.contains(where: { $0.id == item.id }) == true else { throw AhnaError.message("받은 글자를 다시 확인하세요.") }
@@ -597,6 +613,7 @@ enum ComputerVault {
                     request.setValue(String(file.bytes), forHTTPHeaderField: "Content-Length")
                     let (data, response) = try await session.upload(for: request, fromFile: file.url)
                     try verify(response, data: data)
+                    TransferLog.shared.record(sent: true, name: URL(fileURLWithPath: file.path).lastPathComponent, device: hostName, bytes: file.bytes)
                 }
                 progress = "\(files.count)개 파일을 \(hostName)에 저장했습니다."
                 completion?()

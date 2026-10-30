@@ -278,7 +278,9 @@ struct NearbyOutgoing: Identifiable, Equatable {
         let ticket = host.tickets[token]
         switch ticket?.state ?? "missing" {
         case "transferring": current.phase = .sending(ticket?.completed ?? 0, ticket?.files.count ?? 0)
-        case "done": current.phase = .done; sent?(); sent = nil
+        case "done":
+            current.phase = .done; sent?(); sent = nil
+            for file in ticket?.files ?? [] { TransferLog.shared.record(sent: true, name: file.name, device: current.deviceName, bytes: file.bytes) }
         case "declined": current.phase = .declined
         case "expired", "missing":
             if current.phase == .waiting { current.phase = .declined } else { current.phase = .failed("전송이 중단되었습니다.") }

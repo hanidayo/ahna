@@ -228,3 +228,6 @@ body{word-break:keep-all;overflow-wrap:break-word}body.paired .foot{display:none
 .noticeList{display:flex;flex-direction:column;gap:10px;max-height:60vh;overflow:auto;margin-bottom:12px}
 .noticeItem{border:1px solid var(--border);border-radius:10px;padding:12px 14px}.noticeItem.unread{border-color:var(--accent);box-shadow:inset 3px 0 0 var(--accent)}
 .noticeItem p{margin:0 0 8px;white-space:pre-wrap;word-break:keep-all;line-height:1.5}.noticeMeta{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}.noticeMeta .btn{margin-left:auto;padding:4px 12px;font-size:12px}
+/* 전송 기록·받은 글자: 미리보기 한 줄과 시각 */
+.fileMeta small.oneLine{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;overflow-wrap:normal}
+.clipList .fileMeta small.clipTime{margin:3px 0 0}

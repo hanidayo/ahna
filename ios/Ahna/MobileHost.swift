@@ -143,13 +143,13 @@ final class MobileHTTPHost: @unchecked Sendable {
         } catch { listener = nil; changed?() }
     } }
     func stop() { queue.async { [self] in listener?.cancel(); listener = nil; for request in Array(connections.values) { request.finish() }; try? persist(); changed?() } }
-    func snapshot(_ completion: @escaping @Sendable (Bool, [HostPeer], [URL], [(String, String)]) -> Void) {
+    func snapshot(_ completion: @escaping @Sendable (Bool, [HostPeer], [URL], [(String, String, Date, String)]) -> Void) {
         queue.async { [self] in
             prune()
             let files = ((try? FileManager.default.contentsOfDirectory(at: documents, includingPropertiesForKeys: nil)) ?? []).filter { !$0.lastPathComponent.hasPrefix(".") }.sorted { $0.lastPathComponent < $1.lastPathComponent }
             // Every paired device (not only the ones receiving right now), so the app can merge and delete them.
             let list = peers.filter { !reserved.contains($0.key) }.values.sorted { $0.id < $1.id }.map { HostPeer(id: $0.id, name: $0.name, computerID: $0.computerID ?? "", online: Date().timeIntervalSince($0.receiver) < 40) }
-            completion(listener != nil, list, files, clips.values.filter { $0.target == "host" }.map { ($0.sender, $0.text) })
+            completion(listener != nil, list, files, clips.values.filter { $0.target == "host" }.sorted { $0.created > $1.created }.map { ($0.sender, $0.text, $0.created, $0.id) })
         }
     }
     /// Drops these paired devices (and any other pairing of the same device identity) on this side.
@@ -595,7 +595,8 @@ private final class MobileHTTPRequest {
 @MainActor final class MobileHostModel: ObservableObject {
     @Published var peers: [HostPeer] = []
     @Published var files: [URL] = []
-    @Published var clips: [(String, String)] = []
+    /// 받은 글자: (보낸 기기, 내용, 받은 시각, ID)
+    @Published var clips: [(String, String, Date, String)] = []
     @Published var status = "서버 수신 준비 중…"
     @Published var active = false
     @Published var remoteStatus = "서버 설정이 필요합니다."
@@ -663,6 +664,7 @@ private final class MobileHTTPRequest {
     func stop() { foreground = false; relay?.stop(); relay = nil; engine?.stop(); active = false; remoteStatus = "앱을 다시 열면 서버에 연결됩니다." }
     func refresh() { engine?.snapshot { [weak self] running, peers, files, clips in Task { @MainActor in
         guard let self else { return }; self.active = running; self.peers = peers; self.files = files; self.clips = clips; self.status = running ? "연결을 받을 수 있습니다." : "서버 수신 준비 중…"
+        for clip in clips { TransferLog.shared.record(sent: false, name: "글자", device: clip.0, bytes: Int64(clip.1.utf8.count), preview: TransferLog.preview(clip.1), key: "hostclip:" + clip.3) }
     } } }
     /// 상대 기기가 이 기기와 연결하면서 넘겨준 그 기기 쪽 연결. 본체 앱이 추가한 기기로 저장합니다.
     var reverseReceived: (@MainActor (ReverseCredential) -> Void)?
@@ -678,6 +680,8 @@ private final class MobileHTTPRequest {
     }
     func forget(_ ids: [String]) { engine?.forget(ids) { [weak self] in Task { @MainActor in self?.refresh() } } }
     func send(_ files: [PendingFile], target: String, completion: @escaping () -> Void) {
+        let device = peers.first { $0.id == target }?.name ?? "기기"
+        for file in files { TransferLog.shared.record(sent: true, name: URL(fileURLWithPath: file.path).lastPathComponent, device: device, bytes: file.bytes) }
         engine?.prepare(files, target: target) { [weak self] result in Task { @MainActor in self?.status = result; completion() } }
     }
     /// 아나: 아직 서버에 가입하지 않았으면 첫 화면에서 초대 코드를 묻습니다.

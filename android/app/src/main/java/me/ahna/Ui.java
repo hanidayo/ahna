@@ -250,6 +250,8 @@ final class Ui {
         if (bytes < 1024L * 1024 * 1024) return String.format(Locale.ROOT, "%.1f MB", bytes / (1024.0 * 1024));
         return String.format(Locale.ROOT, "%.1f GB", bytes / (1024.0 * 1024 * 1024));
     }
+    /** 2026. 10. 30. 오후 12:51 */
+    static String stamp(long at) { return at <= 0 ? "" : new java.text.SimpleDateFormat("yyyy. M. d. a h:mm", Locale.KOREA).format(new java.util.Date(at)); }
     static String ago(long at) {
         if (at <= 0) return "";
         long diff = System.currentTimeMillis() - at;
