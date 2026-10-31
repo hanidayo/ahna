@@ -536,6 +536,15 @@ struct SendReceiveScreen: View {
                 }
             }
 
+            if transferring, sendingToClient, let fraction = client.selected?.fraction {
+                // 보낸 바이트 기준 진행률
+                HStack(spacing: 10) {
+                    ProgressView(value: fraction).tint(AhnaPalette.accent)
+                    Text(String(Int(fraction * 100)) + "%").font(.system(size: 13, weight: .bold).monospacedDigit()).foregroundStyle(AhnaPalette.accent)
+                        .frame(minWidth: 40, alignment: .trailing)
+                }
+                .accessibilityElement(children: .ignore).accessibilityLabel("보내는 중").accessibilityValue(String(Int(fraction * 100)) + "%")
+            }
             if transferring {
                 HStack(spacing: 10) {
                     ProgressView().tint(AhnaPalette.accent)

@@ -63,7 +63,9 @@ import UniformTypeIdentifiers
                         var put = request("/_ahna/drop/\(drop)/\(index)", "PUT"); put.timeoutInterval = 3600
                         put.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
                         put.setValue(String(offset), forHTTPHeaderField: "X-Ahna-Offset")
-                        let (_, uploaded) = try await session.upload(for: put, from: piece)
+                        let before = sent + offset
+                        let watcher = UploadProgress { [weak self] done in Task { @MainActor in if case .uploading = self?.phase { self?.phase = .uploading(min(1, Double(before + done) / Double(total))) } } }
+                        let (_, uploaded) = try await session.upload(for: put, from: piece, delegate: watcher)
                         guard (uploaded as? HTTPURLResponse)?.statusCode == 200 else { throw AhnaError.message("파일을 올리지 못했습니다.") }
                         offset += Int64(piece.count)
                         self.phase = .uploading(Double(sent + offset) / Double(total))

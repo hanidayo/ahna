@@ -443,7 +443,7 @@ enum ComputerVault {
     // 큰 파일 나눠 올리기: Cloudflare 같은 프록시는 요청 하나를 100MB로 제한합니다.
     // 첫 조각에 X-Ahna-Total(전체 크기)을 붙이면 서버가 받는 기기로는 한 파일처럼 이어 보내고, 나머지는 /_ahna/chunk로 받습니다.
     static let chunkSize: Int64 = 50 * 1024 * 1024
-    private func uploadChunked(_ first: URLRequest, file: URL, bytes: Int64, sent: ((Int64) -> Void)? = nil) async throws -> (Data, URLResponse) {
+    private func uploadChunked(_ first: URLRequest, file: URL, bytes: Int64, sent: (@MainActor @Sendable (Int64) -> Void)? = nil) async throws -> (Data, URLResponse) {
         let handle = try FileHandle(forReadingFrom: file); defer { try? handle.close() }
         var offset: Int64 = 0, upload = ""
         while true {
@@ -458,7 +458,9 @@ enum ComputerVault {
                 request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
             }
             request.setValue(String(piece.count), forHTTPHeaderField: "Content-Length")
-            let (data, response) = try await session.upload(for: request, from: piece)
+            let start = offset
+            let watcher = UploadProgress { done in Task { @MainActor in sent?(start + done) } }
+            let (data, response) = try await session.upload(for: request, from: piece, delegate: watcher)
             offset += Int64(piece.count); sent?(offset)
             if offset >= bytes { return (data, response) }
             guard (response as? HTTPURLResponse)?.statusCode == 202,

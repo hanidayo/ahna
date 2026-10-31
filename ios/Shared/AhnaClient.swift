@@ -101,6 +101,13 @@ struct ReverseCredential: Equatable, Sendable {
     }
 }
 
+/// 올리는 동안 보낸 바이트를 알려 줍니다(진행 막대).
+final class UploadProgress: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+    let sent: @Sendable (Int64) -> Void
+    init(_ sent: @escaping @Sendable (Int64) -> Void) { self.sent = sent }
+    func urlSession(_ session: URLSession, task: URLSessionTask, didSendBodyData bytesSent: Int64, totalBytesSent: Int64, totalBytesExpectedToSend: Int64) { sent(totalBytesSent) }
+}
+
 final class NoAPIRedirects: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
     func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) {
         // Explicit per-PC cookies must never follow a redirect to a different server.
@@ -430,6 +437,8 @@ enum ComputerVault {
     @Published var status = "상대 기기와 연결해 주세요."
     @Published var busy = false
     @Published var progress = ""
+    /// 보내는 중 진행률(0~1, 보낸 바이트 기준). 보내지 않을 때는 nil
+    @Published var fraction: Double?
     @Published var autoSave = UserDefaults.standard.object(forKey: "autoSaveReceivedFiles") as? Bool ?? true {
         didSet { UserDefaults.standard.set(autoSave, forKey: "autoSaveReceivedFiles") }
     }
@@ -461,7 +470,7 @@ enum ComputerVault {
     // 큰 파일 나눠 올리기: Cloudflare 같은 프록시는 요청 하나를 100MB로 제한합니다.
     // 첫 조각에 X-Ahna-Total(전체 크기)을 붙이면 서버가 받는 기기로는 한 파일처럼 이어 보내고, 나머지는 /_ahna/chunk로 받습니다.
     static let chunkSize: Int64 = 50 * 1024 * 1024
-    private func uploadChunked(_ first: URLRequest, file: URL, bytes: Int64, sent: ((Int64) -> Void)? = nil) async throws -> (Data, URLResponse) {
+    private func uploadChunked(_ first: URLRequest, file: URL, bytes: Int64, sent: (@MainActor @Sendable (Int64) -> Void)? = nil) async throws -> (Data, URLResponse) {
         let handle = try FileHandle(forReadingFrom: file); defer { try? handle.close() }
         var offset: Int64 = 0, upload = ""
         while true {
@@ -476,7 +485,9 @@ enum ComputerVault {
                 request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
             }
             request.setValue(String(piece.count), forHTTPHeaderField: "Content-Length")
-            let (data, response) = try await session.upload(for: request, from: piece)
+            let start = offset
+            let watcher = UploadProgress { done in Task { @MainActor in sent?(start + done) } }
+            let (data, response) = try await session.upload(for: request, from: piece, delegate: watcher)
             offset += Int64(piece.count); sent?(offset)
             if offset >= bytes { return (data, response) }
             guard (response as? HTTPURLResponse)?.statusCode == 202,
@@ -625,10 +636,13 @@ enum ComputerVault {
     @discardableResult func send(_ files: [PendingFile], completion: (() -> Void)? = nil) -> Bool {
         guard !busy, state != nil, !files.isEmpty else { return false }
         busy = true
+        fraction = 0
+        let total = Double(max(1, files.reduce(Int64(0)) { $0 + max($1.bytes, 1) }))
         work = Task {
-            defer { busy = false; work = nil }
+            defer { busy = false; work = nil; fraction = nil }
             do {
                 let batch = UUID().uuidString
+                var done: Int64 = 0
                 for (index, file) in files.enumerated() {
                     try Task.checkCancellation()
                     progress = "\(index + 1)/\(files.count) · \(file.path)"
@@ -639,8 +653,14 @@ enum ComputerVault {
                     request.httpMethod = "POST"
                     request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
                     request.setValue(String(file.bytes), forHTTPHeaderField: "Content-Length")
-                    let (data, response) = file.bytes > Self.chunkSize ? try await uploadChunked(request, file: file.url, bytes: file.bytes) : try await session.upload(for: request, fromFile: file.url)
+                    let base = done
+                    let report: @MainActor @Sendable (Int64) -> Void = { [weak self] sent in self?.fraction = min(1, Double(base + sent) / total) }
+                    let watcher = UploadProgress { sent in Task { @MainActor in report(sent) } }
+                    let (data, response) = file.bytes > Self.chunkSize
+                        ? try await uploadChunked(request, file: file.url, bytes: file.bytes, sent: report)
+                        : try await session.upload(for: request, fromFile: file.url, delegate: watcher)
                     try verify(response, data: data)
+                    done += max(file.bytes, 1); fraction = min(1, Double(done) / total)
                     TransferLog.shared.record(sent: true, name: URL(fileURLWithPath: file.path).lastPathComponent, device: hostName, bytes: file.bytes)
                 }
                 progress = "\(files.count)개 파일을 \(hostName)에 저장했습니다."
