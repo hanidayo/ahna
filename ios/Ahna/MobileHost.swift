@@ -618,7 +618,12 @@ private final class MobileHTTPRequest {
     }
     init() {
         do { let host = try MobileHTTPHost(); host.name = DeviceIdentity.savedName; engine = host
-            host.received = { url, source in Task { @MainActor in ReceiveHistory.shared.record(id: url.path, url: url, source: source) } }
+            host.received = { url, source in Task { @MainActor in
+                ReceiveHistory.shared.record(id: url.path, url: url, source: source)
+                // 사진·동영상은 사진 앱에만 저장(설정이 켜져 있으면)
+                let photos = UserDefaults.standard.object(forKey: "savePhotosToLibrary") as? Bool ?? true
+                if photos, PhotoLibrarySaver.isMedia(url), (try? await PhotoLibrarySaver.save(url)) != nil { ReceiveHistory.shared.movedToPhotos(url) }
+            } }
             host.changed = { [weak self] in Task { @MainActor in self?.refresh() } }
             host.reverseReceived = { [weak self] credential in Task { @MainActor in self?.reverseReceived?(credential) } }
             host.ticketsChanged = { [weak self] list in Task { @MainActor in
@@ -628,10 +633,10 @@ private final class MobileHTTPRequest {
             } }
             host.guestRequested = { [weak self] request in Task { @MainActor in self?.guestRequested?(request) } }
             host.guestReceived = { url, source in Task { @MainActor in
-                // QR로 받은 파일도 평소 수신처럼: 받은 파일 기록 + (설정이 켜져 있으면) 사진 앱에도 저장
+                // QR로 받은 파일도 평소 수신처럼: 받은 파일 기록 + (설정이 켜져 있으면) 사진 앱에만 저장
                 ReceiveHistory.shared.record(id: url.path, url: url, source: source)
                 let photos = UserDefaults.standard.object(forKey: "savePhotosToLibrary") as? Bool ?? true
-                if photos, PhotoLibrarySaver.isMedia(url) { try? await PhotoLibrarySaver.save(url) }
+                if photos, PhotoLibrarySaver.isMedia(url), (try? await PhotoLibrarySaver.save(url)) != nil { ReceiveHistory.shared.movedToPhotos(url) }
             } }
         } catch { status = error.localizedDescription }
     }

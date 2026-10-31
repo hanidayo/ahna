@@ -90,7 +90,7 @@ public class MainActivity extends Activity {
     LinearLayout[] tabItems;
     Button sendButton;
     EditText draft, pin;
-    TextView snack, codeView, deviceLine, nameValue, nasValue, folderValue, updateValue, historyFolder;
+    TextView snack, codeView, deviceLine, nameValue, nasValue, folderValue, updateValue, historyFolder, photosValue;
     final List<LinearLayout> nasPills = new ArrayList<>();
     final List<View> headers = new ArrayList<>(), bodies = new ArrayList<>();
     String targetPrint = "", connectionPrint = "", inboxPrint = "";
@@ -622,12 +622,12 @@ public class MainActivity extends Activity {
     }
 
     void optionsPhone(LinearLayout body) {
+        // 순서: 근처 기기에서 받기(내 기기 이름 · 보낼 때 안내 포함) → 연결된 기기 → 연결 코드 → 기기 추가 → 설정
         body.addView(meaningCard(), ui.lp(-1, -2, 0, 0, 0, 14));
-        body.addView(codeCard());
+        body.addView(nearby.optionsCard());
         body.addView(connectionsCard(), ui.lp(-1, -2, 0, 14, 0, 0));
+        body.addView(codeCard(), ui.lp(-1, -2, 0, 14, 0, 0));
         body.addView(addCard(), ui.lp(-1, -2, 0, 14, 0, 0));
-        body.addView(nearby.optionsCard(), ui.lp(-1, -2, 0, 14, 0, 0));
-        body.addView(nearby.sendInfoCard(), ui.lp(-1, -2, 0, 14, 0, 0));
         body.addView(settingsCard(), ui.lp(-1, -2, 0, 14, 0, 0));
     }
 
@@ -640,14 +640,13 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams mid = ui.flex(1); mid.setMargins(dp(16), 0, dp(16), 0);
         LinearLayout b = ui.column();
         b.addView(connectionsCard(), new LinearLayout.LayoutParams(-1, -2));
-        b.addView(nearby.optionsCard(), ui.lp(-1, -2, 0, 16, 0, 0));
+        b.addView(codeCard(), ui.lp(-1, -2, 0, 16, 0, 0));
+        b.addView(addCard(), ui.lp(-1, -2, 0, 16, 0, 0));
         grid.addView(b, mid);
         LinearLayout c = ui.column();
         c.addView(settingsCard(), new LinearLayout.LayoutParams(-1, -2));
-        c.addView(nearby.sendInfoCard(), ui.lp(-1, -2, 0, 16, 0, 0));
         grid.addView(c, ui.flex(1));
-        a.addView(codeCard(), new LinearLayout.LayoutParams(-1, -2));
-        a.addView(addCard(), ui.lp(-1, -2, 0, 16, 0, 0));
+        a.addView(nearby.optionsCard(), new LinearLayout.LayoutParams(-1, -2));
         body.addView(grid, new LinearLayout.LayoutParams(-1, -2));
     }
 
@@ -660,13 +659,12 @@ public class MainActivity extends Activity {
         grid.addView(a, ui.flex(1));
         LinearLayout.LayoutParams right = ui.flex(1); right.setMargins(dp(16), 0, 0, 0);
         LinearLayout b = ui.column();
-        b.addView(nearby.optionsCard(), new LinearLayout.LayoutParams(-1, -2));
-        b.addView(settingsCard(), ui.lp(-1, -2, 0, 16, 0, 0));
-        b.addView(nearby.sendInfoCard(), ui.lp(-1, -2, 0, 16, 0, 0));
+        b.addView(settingsCard(), new LinearLayout.LayoutParams(-1, -2));
         grid.addView(b, right);
-        a.addView(codeCard(), new LinearLayout.LayoutParams(-1, -2));
-        a.addView(addCard(), ui.lp(-1, -2, 0, 16, 0, 0));
+        a.addView(nearby.optionsCard(), new LinearLayout.LayoutParams(-1, -2));
         a.addView(connectionsCard(), ui.lp(-1, -2, 0, 16, 0, 0));
+        a.addView(codeCard(), ui.lp(-1, -2, 0, 16, 0, 0));
+        a.addView(addCard(), ui.lp(-1, -2, 0, 16, 0, 0));
         body.addView(grid, new LinearLayout.LayoutParams(-1, -2));
     }
 
@@ -742,9 +740,10 @@ public class MainActivity extends Activity {
         TextView h = ui.heading("설정");
         h.setPadding(dp(16), dp(14), dp(16), dp(6));
         card.addView(h);
-        nameValue = settingRow(card, "이 기기의 이름", ui.text, this::editName, null);
         nasValue = settingRow(card, "서버", ui.text, this::editNas, null);
         folderValue = settingRow(card, "받은 파일 저장 위치", ui.text, this::chooseFolder, null);
+        // 사진·동영상은 갤러리(사진 앱)에만 저장: 켜 두면 Pictures/Ahna · Movies/Ahna에, 끄면 받은 파일 저장 위치에
+        photosValue = settingRow(card, "사진·동영상은 사진 앱에만 저장", ui.text, () -> { prefs.edit().putBoolean("photosToGallery", !photosToGallery()).apply(); updateSettingsValues(); }, photosToGallery() ? "켜짐" : "꺼짐");
         card.addView(ui.divider());
         LinearLayout layoutRow = ui.row();
         layoutRow.setMinimumHeight(dp(60));
@@ -771,7 +770,7 @@ public class MainActivity extends Activity {
         texts.addView(value);
         row.addView(texts, ui.flex(1));
         if (trailing == null) row.addView(ui.icon("chevron", ui.faint), ui.lp(16, 16, 12, 0, 0, 0));
-        else if (!trailing.isEmpty()) row.addView(ui.text(trailing, 13, ui.accent, Ui.MEDIUM), ui.lp(-2, -2, 12, 0, 0, 0));
+        else if (!trailing.isEmpty()) { TextView t = ui.text(trailing, 13, ui.accent, Ui.MEDIUM); value.setTag(t); row.addView(t, ui.lp(-2, -2, 12, 0, 0, 0)); }
         row.setClickable(true); row.setFocusable(true);
         row.setOnClickListener(v -> action.run());
         card.addView(row, new LinearLayout.LayoutParams(-1, -2));
@@ -981,9 +980,14 @@ public class MainActivity extends Activity {
         runOnUiThread(() -> { if (!closed) updateTargets(); });
     }
 
+    boolean photosToGallery() { return prefs.getBoolean("photosToGallery", true); }
     void updateSettingsValues() {
-        if (nameValue == null) return;
-        nameValue.setText(deviceName());
+        if (nasValue == null) return;
+        if (nameValue != null) nameValue.setText(deviceName());
+        if (photosValue != null) {
+            photosValue.setText(photosToGallery() ? "갤러리(Pictures·Movies/Ahna)에 저장 · 끄면 받은 파일 저장 위치에" : "받은 파일 저장 위치에 저장");
+            if (photosValue.getTag() instanceof TextView) ((TextView) photosValue.getTag()).setText(photosToGallery() ? "켜짐" : "꺼짐");
+        }
         boolean key = !prefs.getString("nasKey", "").isEmpty();
         nasValue.setText(key ? "연결됨" : "초대 코드 필요");
         folderValue.setText(folderLabel());
@@ -1772,7 +1776,19 @@ public class MainActivity extends Activity {
         long bytes = file.length();
         Uri destination = null; String folder = prefs.getString("folder", null); boolean published = false;
         try {
-            if (folder != null) {
+            String mime = android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(display.contains(".") ? display.substring(display.lastIndexOf('.') + 1).toLowerCase(java.util.Locale.ROOT) : "");
+            boolean media = mime != null && (mime.startsWith("image/") || mime.startsWith("video/"));
+            if (media && photosToGallery()) {
+                // 사진·동영상은 사진 앱(갤러리)에만
+                ContentValues values = new ContentValues();
+                values.put(MediaStore.MediaColumns.DISPLAY_NAME, display);
+                values.put(MediaStore.MediaColumns.MIME_TYPE, mime);
+                boolean video = mime.startsWith("video/");
+                values.put(MediaStore.MediaColumns.RELATIVE_PATH, (video ? Environment.DIRECTORY_MOVIES : Environment.DIRECTORY_PICTURES) + "/Ahna");
+                values.put(MediaStore.MediaColumns.IS_PENDING, 1);
+                destination = getContentResolver().insert(video ? MediaStore.Video.Media.EXTERNAL_CONTENT_URI : MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
+                folder = null;
+            } else if (folder != null) {
                 Uri tree = Uri.parse(folder);
                 destination = DocumentsContract.createDocument(getContentResolver(), DocumentsContract.buildDocumentUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree)), "application/octet-stream", display);
             } else {

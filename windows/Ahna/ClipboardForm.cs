@@ -102,6 +102,9 @@ internal sealed class ClipboardForm : Form
 
 	private readonly FooterPanel footer;
 
+	// 붙여넣기·보내기 줄(보낼 글자 칸 바로 아래)
+	private Rectangle buttonRow;
+
 	private readonly FlatButton pasteButton;
 
 	private readonly FlatButton sendButton;
@@ -181,14 +184,15 @@ internal sealed class ClipboardForm : Form
 			AccessibleDescription = "Ctrl+Enter"
 		};
 		// 탭 순서: 받을 기기 → 보낼 글자 → 붙여넣기 → 보내기 → 받은 글자
+		// 붙여넣기·보내기는 보낼 글자 칸 바로 아래에 둡니다(아래 막대에는 상태 글만).
 		deviceList.TabIndex = 0;
 		editorFrame.TabIndex = 1;
-		footer.TabIndex = 2;
-		inboxPanel.TabIndex = 3;
-		pasteButton.TabIndex = 0;
-		sendButton.TabIndex = 1;
-		footer.Controls.AddRange(new Control[] { pasteButton, sendButton });
-		Controls.AddRange(new Control[] { deviceList, editorFrame, footer, inboxPanel });
+		pasteButton.TabIndex = 2;
+		sendButton.TabIndex = 3;
+		inboxPanel.TabIndex = 4;
+		footer.TabIndex = 5;
+		footer.TabStop = false;
+		Controls.AddRange(new Control[] { deviceList, editorFrame, pasteButton, sendButton, footer, inboxPanel });
 		pasteButton.Click += (object? _, EventArgs _) => PasteFromClipboard();
 		sendButton.Click += (object? _, EventArgs _) => Send();
 		editor.TextChanged += (object? _, EventArgs _) => OnDraftChanged();
@@ -623,7 +627,7 @@ internal sealed class ClipboardForm : Form
 		int headerBottom = pad + S(44);
 		int contentTop = headerBottom + S(22);
 		int labelHeight = S(24);
-		int footerHeight = S(72);
+		int footerHeight = S(52);
 		footer.Bounds = new Rectangle(0, height - footerHeight, width, footerHeight);
 		int contentBottom = footer.Top - S(20);
 		int columnGap = S(28);
@@ -642,7 +646,9 @@ internal sealed class ClipboardForm : Form
 		LayoutDevices();
 		draftLabelRect = new Rectangle(leftX, deviceList.Bottom + S(18), leftWidth, labelHeight);
 		int editorTop = draftLabelRect.Bottom + S(6);
-		editorFrame.Bounds = new Rectangle(leftX, editorTop, leftWidth, Math.Max(S(96), contentBottom - editorTop));
+		int buttonHeight = S(40);
+		editorFrame.Bounds = new Rectangle(leftX, editorTop, leftWidth, Math.Max(S(96), contentBottom - S(12) - buttonHeight - editorTop));
+		buttonRow = new Rectangle(leftX, editorFrame.Bottom + S(12), leftWidth, buttonHeight);
 		// 오른쪽: 받은 글자
 		inboxLabelRect = new Rectangle(rightX, contentTop, rightWidth, labelHeight);
 		int inboxTop = inboxLabelRect.Bottom + S(6);
@@ -701,16 +707,11 @@ internal sealed class ClipboardForm : Form
 		{
 			return;
 		}
-		int pad = S(24);
+		// 보낼 글자 칸 바로 아래: [붙여넣기] [글자 보내기 ────────]
 		int gap = S(8);
-		int height = S(40);
-		int top = (footer.Height - height) / 2;
-		int sendWidth = Math.Max(sendButton.PreferredWidth(), S(140));
 		int pasteWidth = pasteButton.PreferredWidth();
-		int maxSend = Math.Max(S(120), footer.Width - pad * 2 - pasteWidth - gap - S(160));
-		sendWidth = Math.Min(sendWidth, maxSend);
-		sendButton.Bounds = new Rectangle(footer.Width - pad - sendWidth, top, sendWidth, height);
-		pasteButton.Bounds = new Rectangle(sendButton.Left - gap - pasteWidth, top, pasteWidth, height);
+		pasteButton.Bounds = new Rectangle(buttonRow.Left, buttonRow.Top, pasteWidth, buttonRow.Height);
+		sendButton.Bounds = new Rectangle(pasteButton.Right + gap, buttonRow.Top, Math.Max(S(120), buttonRow.Right - pasteButton.Right - gap), buttonRow.Height);
 	}
 
 	protected override void OnResize(EventArgs e)
@@ -1533,7 +1534,7 @@ internal sealed class ClipboardForm : Form
 				g.DrawLine(pen, 0, 0, Width, 0);
 			}
 			int pad = owner.S(24);
-			int right = owner.pasteButton.Left - owner.S(16);
+			int right = Width - pad;
 			int lineHeight = LineHeight(owner.smallFont);
 			int height = Math.Min(lineHeight * 2, Height);
 			Rectangle area = new Rectangle(pad, (Height - height) / 2, Math.Max(0, right - pad), height);

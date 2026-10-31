@@ -921,37 +921,33 @@ struct OptionsScreen: View {
         return AhnaPage(header: ScreenHeader(title: "옵션", showsLogo: regular, nasStatus: nasHeaderStatus(host: host, client: client), regular: regular,
                                                  noticeUnread: host.announcements.isEmpty ? nil : host.unreadNotices, onNotices: { host.showNotices = true })) {
             AhnaMeaningBanner().padding(.horizontal, regular ? 24 : 16).padding(.top, regular ? 4 : 16).padding(.bottom, regular ? 12 : 0)
+            // 순서: 근처 기기에서 받기(내 기기 이름 · 보낼 때 안내 포함) → 연결된 기기 → 연결 코드 → 기기 추가 → 설정
             if columns >= 3 {
                 HStack(alignment: .top, spacing: 16) {
-                    VStack(spacing: 16) { codeCard(regular: true); addCard }.frame(maxWidth: .infinity, alignment: .top)
-                    VStack(spacing: 16) { devicesCard(regular: true); NearbyOptionsCard(center: nearby) }.frame(maxWidth: .infinity, alignment: .top)
+                    VStack(spacing: 16) { nearbyCard }.frame(maxWidth: .infinity, alignment: .top)
+                    VStack(spacing: 16) { devicesCard(regular: true); codeCard(regular: true); addCard }.frame(maxWidth: .infinity, alignment: .top)
                     VStack(spacing: 16) {
                         if updateAvailable { updateCard }
                         settingsCard
-                        NearbySendInfoCard()
                     }.frame(maxWidth: .infinity, alignment: .top)
                 }
                 .padding(.horizontal, 24).padding(.top, 4).padding(.bottom, 24)
             } else if columns == 2 {
-                // 왼쪽: 연결 코드 · 기기 추가 · 연결된 기기 / 오른쪽: (새 버전 안내) · 근처 기기에서 받기 · 보낼 때 · 설정
                 HStack(alignment: .top, spacing: 16) {
-                    VStack(spacing: 16) { codeCard(regular: true); addCard; devicesCard(regular: true) }.frame(maxWidth: .infinity, alignment: .top)
+                    VStack(spacing: 16) { nearbyCard; devicesCard(regular: true); codeCard(regular: true); addCard }.frame(maxWidth: .infinity, alignment: .top)
                     VStack(spacing: 16) {
                         if updateAvailable { updateCard }
-                        NearbyOptionsCard(center: nearby)
-                        NearbySendInfoCard()
                         settingsCard
                     }.frame(maxWidth: .infinity, alignment: .top)
                 }
                 .padding(.horizontal, 24).padding(.top, 4).padding(.bottom, 24)
             } else {
                 VStack(spacing: 14) {
+                    nearbyCard
                     if updateAvailable { updateCard }
-                    codeCard(regular: false)
                     devicesCard(regular: false)
+                    codeCard(regular: false)
                     addCard
-                    NearbyOptionsCard(center: nearby)
-                    NearbySendInfoCard()
                     settingsCard
                 }
                 .padding(16).padding(.bottom, 16)
@@ -961,6 +957,10 @@ struct OptionsScreen: View {
 
     private var updateCard: some View {
         UpdateBanner(updater: updater).ahnaCard()
+    }
+
+    private var nearbyCard: some View {
+        NearbyOptionsCard(center: nearby, deviceName: client.deviceName, onEditName: { editor = .name })
     }
 
     // MARK: 연결 코드
@@ -1125,13 +1125,11 @@ struct OptionsScreen: View {
         VStack(alignment: .leading, spacing: 0) {
             CardTitle("설정").padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 6)
             AhnaDivider()
-            SettingsRow("이 기기의 이름", value: client.deviceName, action: { editor = .name }) { SettingsChevron() }
-            AhnaDivider()
             SettingsRow("서버", value: nasValue, action: { editor = .nas }) { SettingsChevron() }
             AhnaDivider()
             SettingsToggleRow(title: "받은 파일 자동 저장", value: "파일 앱 → 나의 iPhone/iPad → 아나", isOn: $client.autoSave)
             AhnaDivider()
-            SettingsToggleRow(title: "사진·동영상은 사진 앱에도 저장", value: "", isOn: $client.savePhotos)
+            SettingsToggleRow(title: "사진·동영상은 사진 앱에만 저장", value: "끄면 파일 앱에 저장", isOn: $client.savePhotos)
             AhnaDivider()
             SettingsToggleRow(title: "사진을 JPG로 보내기", value: "HEIC 사진은 JPG, HEVC 영상은 H.264로 · 끄면 원본 그대로", isOn: $client.photosAsJPG)
             AhnaDivider()

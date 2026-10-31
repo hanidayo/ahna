@@ -380,6 +380,9 @@ struct QrShareSheet: View {
                 .padding(.top, 4)
                 Text("상대는 앱 없이 iPhone · Android 카메라로 찍기만 하면 됩니다\n이 기기에서 아나를 열어 두는 동안만 링크가 동작합니다")
                     .font(.system(size: 12)).foregroundStyle(AhnaPalette.faint).multilineTextAlignment(.center)
+                // 보낼 때 안내(예전 옵션의 ‘보낼 때’ 카드)
+                Text("근처 기기나 QR로 보내면 파일은 서버를 거쳐 갑니다. 상대는 그 파일만 받을 수 있고, 다 받으면 접근 권한이 바로 없어집니다.")
+                    .font(.system(size: 12)).foregroundStyle(AhnaPalette.faint).multilineTextAlignment(.center)
             }
             .padding(.horizontal, 20).padding(.top, 22).padding(.bottom, 28)
             .frame(maxWidth: 520)
@@ -489,6 +492,9 @@ struct QrShareSheet: View {
 
 struct NearbyOptionsCard: View {
     @ObservedObject var center: NearbyCenter
+    /// 이 기기 이름(다른 기기에 보이는 이름)과 바꾸기
+    var deviceName = ""
+    var onEditName: (() -> Void)? = nil
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 10) {
@@ -507,13 +513,24 @@ struct NearbyOptionsCard: View {
             }
             .accessibilityElement(children: .contain)
             .accessibilityLabel("근처 기기에서 받기")
-            HStack(spacing: 10) {
-                Text("근처에 보이는 이름").font(.system(size: 13)).foregroundStyle(AhnaPalette.muted)
-                Spacer(minLength: 4)
-                Text(center.shownName).font(.system(size: 13, weight: .medium)).lineLimit(1)
+            Button { onEditName?() } label: {
+                HStack(spacing: 10) {
+                    Text("내 기기 이름").font(.system(size: 13)).foregroundStyle(AhnaPalette.muted)
+                    Spacer(minLength: 4)
+                    Text(deviceName.isEmpty ? center.shownName : deviceName).font(.system(size: 13, weight: .medium)).foregroundStyle(AhnaPalette.text).lineLimit(1)
+                    if onEditName != nil {
+                        Text("바꾸기").font(.system(size: 13, weight: .medium)).foregroundStyle(AhnaPalette.accent)
+                    }
+                }
+                .padding(.horizontal, 12).padding(.vertical, 10)
+                .frame(minHeight: 44)
+                .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(AhnaPalette.subtle))
+                .contentShape(Rectangle())
             }
-            .padding(.horizontal, 12).padding(.vertical, 10)
-            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(AhnaPalette.subtle))
+            .buttonStyle(.plain)
+            .disabled(onEditName == nil)
+            .accessibilityLabel("내 기기 이름, " + (deviceName.isEmpty ? center.shownName : deviceName))
+            .accessibilityHint("눌러서 이름 바꾸기")
             status
         }
         .ahnaCard()
@@ -579,7 +596,7 @@ struct NearbySendInfoCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("보낼 때").font(.system(size: 14, weight: .bold)).accessibilityAddTraits(.isHeader)
-            Text("근처 기기나 QR로 보내면 파일은 내 서버를 거쳐 갑니다. 상대는 그 파일만 받을 수 있고, 다 받으면 접근 권한이 바로 없어집니다. 이 기기는 아나가 화면에 열려 있는 동안만 보내고 받을 수 있습니다.")
+            Text("근처 기기나 QR로 보내면 파일은 서버를 거쳐 갑니다. 상대는 그 파일만 받을 수 있고, 다 받으면 접근 권한이 바로 없어집니다. 이 기기는 아나가 화면에 열려 있는 동안만 보내고 받을 수 있습니다.")
                 .font(.system(size: 13)).foregroundStyle(AhnaPalette.muted)
         }
         .foregroundStyle(AhnaPalette.text)

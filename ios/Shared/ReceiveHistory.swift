@@ -20,6 +20,13 @@ import Combine
         entries = Array(entries.prefix(10)); persist()
     }
     func clear() { entries.removeAll(); persist() }
+    /// 사진 앱에만 저장: 사진 앱에 넣은 뒤 파일 앱 쪽 사본과 그 기록을 지웁니다.
+    func movedToPhotos(_ url: URL) {
+        try? FileManager.default.removeItem(at: url)
+        let before = entries.count
+        entries.removeAll { $0.url.standardizedFileURL == url.standardizedFileURL }
+        if entries.count != before { persist() }
+    }
     private func persist() {
         if let data = try? JSONEncoder().encode(entries) { defaults.set(data, forKey: "receivedHistory060") }
         defaults.set(seen, forKey: "receivedHistorySeen060")

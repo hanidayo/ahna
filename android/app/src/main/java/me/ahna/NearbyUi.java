@@ -346,8 +346,14 @@ final class NearbyUi implements NearbyRadio.Listener, Protocol.GuestListener {
         LinearLayout nameRow = ui.row();
         nameRow.setPadding(dp(12), dp(10), dp(12), dp(10));
         nameRow.setBackground(ui.round(ui.subtle, 12));
-        nameRow.addView(ui.text("근처에 보이는 이름", 13, ui.muted, Ui.REGULAR), ui.flex(1));
+        // 내 기기 이름: 눌러서 바로 바꾸기(설정의 이름 바꾸기는 여기로 옮김)
+        nameRow.addView(ui.text("내 기기 이름", 13, ui.muted, Ui.REGULAR), ui.flex(1));
         nameRow.addView(Ui.oneLine(ui.text(deviceName(), 13, ui.text, Ui.MEDIUM)), ui.lp(-2, -2, 8, 0, 0, 0));
+        nameRow.addView(ui.text("바꾸기", 13, ui.accent, Ui.MEDIUM), ui.lp(-2, -2, 10, 0, 0, 0));
+        nameRow.setMinimumHeight(dp(44)); nameRow.setGravity(Gravity.CENTER_VERTICAL);
+        nameRow.setClickable(true); nameRow.setFocusable(true);
+        nameRow.setContentDescription("내 기기 이름, " + deviceName() + ". 눌러서 바꾸기");
+        nameRow.setOnClickListener(v -> a.editName());
         optionsBox.addView(nameRow, ui.lp(-1, -2, 0, 12, 0, 0));
         LinearLayout status = ui.row();
         status.setGravity(Gravity.CENTER_VERTICAL);
@@ -386,7 +392,7 @@ final class NearbyUi implements NearbyRadio.Listener, Protocol.GuestListener {
         TextView h = ui.text("보낼 때", 14, ui.text, Ui.BOLD);
         h.setAccessibilityHeading(true);
         card.addView(h);
-        card.addView(ui.text("근처 기기나 QR로 보내면 파일은 내 서버를 거쳐 갑니다. 상대는 그 파일만 받을 수 있고, 다 받으면 접근 권한이 바로 없어집니다. 이 기기는 아나가 화면에 열려 있는 동안만 보내고 받을 수 있습니다.", 13, ui.muted, Ui.REGULAR), ui.lp(-1, -2, 0, 6, 0, 0));
+        card.addView(ui.text("근처 기기나 QR로 보내면 파일은 서버를 거쳐 갑니다. 상대는 그 파일만 받을 수 있고, 다 받으면 접근 권한이 바로 없어집니다. 이 기기는 아나가 화면에 열려 있는 동안만 보내고 받을 수 있습니다.", 13, ui.muted, Ui.REGULAR), ui.lp(-1, -2, 0, 6, 0, 0));
         return card;
     }
 
@@ -1083,6 +1089,10 @@ final class NearbyUi implements NearbyRadio.Listener, Protocol.GuestListener {
         TextView foot = ui.text("상대는 앱 없이 iPhone · Android 카메라로 찍기만 하면 됩니다\n이 기기에서 아나를 열어 두는 동안만 링크가 동작합니다", 12, ui.faint, Ui.REGULAR);
         foot.setGravity(Gravity.CENTER);
         b.addView(foot, ui.lp(-1, -2, 0, 12, 0, 0));
+        // 보낼 때 안내(예전 옵션의 ‘보낼 때’ 카드)
+        TextView about = ui.text("근처 기기나 QR로 보내면 파일은 서버를 거쳐 갑니다. 상대는 그 파일만 받을 수 있고, 다 받으면 접근 권한이 바로 없어집니다.", 12, ui.faint, Ui.REGULAR);
+        about.setGravity(Gravity.CENTER);
+        b.addView(about, ui.lp(-1, -2, 0, 10, 0, 0));
     }
 
     void close() {

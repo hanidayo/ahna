@@ -232,7 +232,8 @@ struct NearbyOutgoing: Identifiable, Equatable {
                 let key = offer.url + "|" + String(file.0)
                 let destination = try store.save(temporary: temporary, name: file.1, bytes: file.2, key: key)
                 ReceiveHistory.shared.record(id: key, url: destination, source: offer.name)
-                if photos, PhotoLibrarySaver.isMedia(destination) { try? await PhotoLibrarySaver.save(destination) }
+                // 사진·동영상은 사진 앱에만 저장(설정이 켜져 있으면)
+                if photos, PhotoLibrarySaver.isMedia(destination), (try? await PhotoLibrarySaver.save(destination)) != nil { ReceiveHistory.shared.movedToPhotos(destination) }
             }
             setPhase(id, .done("\(files.count)개를 받았습니다 · 파일 앱 › 아나"))
             finishLater(id)

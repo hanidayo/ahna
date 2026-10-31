@@ -748,17 +748,22 @@ enum ComputerVault {
         return receivedFiles?.photosSaved(key) == true
     }
     private func finishSaving(_ file: InboxFile, key: String, url: URL) async {
+        var moved = false
         do {
             let store = try fileStore()
             if savePhotos, PhotoLibrarySaver.isMedia(url), !store.photosSaved(key) {
                 try Task.checkCancellation()
                 try await PhotoLibrarySaver.save(url)
                 try store.markPhotosSaved(key)
-                savedRevision += 1
+                savedRevision += 1; moved = true
                 progress = "사진 앱에 저장 완료 · \(file.name)"
             }
         } catch { progress = "파일 앱 저장 완료 · 사진 앱 추가 실패\n\(error.localizedDescription)" }
         await acknowledge(file, key: key, url: url)
+        // 사진·동영상은 사진 앱에만: 사진 앱에 넣었으면 파일 앱 쪽 사본은 지웁니다.
+        #if canImport(UIKit)
+        if moved { ReceiveHistory.shared.movedToPhotos(url) }
+        #endif
     }
     private func acknowledge(_ file: InboxFile, key: String, url: URL) async {
         do {
