@@ -316,9 +316,6 @@ struct SendReceiveScreen: View {
         GeometryReader { proxy in
             page(columns: AhnaLayout.columns(forWidth: proxy.size.width))
         }
-        .fileImporter(isPresented: $importing, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
-            importFiles(result)
-        }
         .photosPicker(isPresented: $choosingPhotos, selection: $photoItems, maxSelectionCount: 100, matching: .any(of: [.images, .videos]), preferredItemEncoding: client.photosAsJPG ? .compatible : .current)
         .onChange(of: photoItems) { _, items in if !items.isEmpty { loadPhotos(items) } }
         .sheet(isPresented: Binding(get: { nearby.outgoing != nil }, set: { if !$0 { nearby.closeOutgoing() } })) {
@@ -502,6 +499,10 @@ struct SendReceiveScreen: View {
             }
             .disabled(loadingPhotos || transferring)
             .accessibilityLabel("파일 선택")
+            // 파일 앱 고르기: 같은 화면의 다른 시트(.sheet)와 한 뷰에 붙어 있으면 고른 결과가 돌아오지 않아, 이 메뉴에 따로 붙입니다.
+            .fileImporter(isPresented: $importing, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
+                importFiles(result)
+            }
 
             if !pending.isEmpty {
                 VStack(spacing: 0) {
