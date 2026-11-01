@@ -278,7 +278,6 @@ struct SendReceiveScreen: View {
     @State private var pending: [PendingFile] = []
     @State private var scoped: [URL] = []
     @State private var tempFolders: [URL] = []
-    @State private var importing = false
     @State private var choosingPhotos = false
     @State private var photoItems: [PhotosPickerItem] = []
     @State private var loadingPhotos = false
@@ -475,7 +474,7 @@ struct SendReceiveScreen: View {
             }
             Menu {
                 Button { choosingPhotos = true } label: { Label("사진 보관함", systemImage: "photo.on.rectangle") }
-                Button { importing = true } label: { Label("파일 앱", systemImage: "folder") }
+                Button { DocumentPicker.shared.present { urls in importFiles(.success(urls)) } } label: { Label("파일 앱", systemImage: "folder") }
             } label: {
                 VStack(spacing: 6) {
                     ZStack {
@@ -499,10 +498,7 @@ struct SendReceiveScreen: View {
             }
             .disabled(loadingPhotos || transferring)
             .accessibilityLabel("파일 선택")
-            // 파일 앱 고르기: 같은 화면의 다른 시트(.sheet)와 한 뷰에 붙어 있으면 고른 결과가 돌아오지 않아, 이 메뉴에 따로 붙입니다.
-            .fileImporter(isPresented: $importing, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
-                importFiles(result)
-            }
+
 
             if !pending.isEmpty {
                 VStack(spacing: 0) {
@@ -1397,4 +1393,30 @@ struct NoticesSheet: View {
         .tint(AhnaPalette.accent)
         .presentationDetents([.medium, .large])
     }
+}
+
+/// 파일 앱에서 고르기. SwiftUI의 fileImporter는 이 화면(메뉴·여러 시트)에서 고른 결과가 돌아오지 않는 경우가 있어
+/// UIKit 문서 선택 창을 맨 위 화면에 직접 띄웁니다. 고른 파일은 앱 임시 폴더로 복사됩니다(asCopy).
+@MainActor final class DocumentPicker: NSObject, UIDocumentPickerDelegate {
+    static let shared = DocumentPicker()
+    private var completion: (([URL]) -> Void)?
+    func present(_ completion: @escaping ([URL]) -> Void) {
+        self.completion = completion
+        // 메뉴가 닫히는 중에 띄우면 무시되므로 잠깐 기다립니다.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+            guard let self else { return }
+            let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.item], asCopy: true)
+            picker.allowsMultipleSelection = true
+            picker.delegate = self
+            let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+            guard var top = scenes.flatMap(\.windows).first(where: \.isKeyWindow)?.rootViewController ?? scenes.first?.windows.first?.rootViewController else { return }
+            while let next = top.presentedViewController { top = next }
+            top.present(picker, animated: true)
+        }
+    }
+    func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+        let done = completion; completion = nil
+        if !urls.isEmpty { done?(urls) }
+    }
+    func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) { completion = nil }
 }
