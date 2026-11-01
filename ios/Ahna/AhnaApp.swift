@@ -918,11 +918,11 @@ struct OptionsScreen: View {
         return AhnaPage(header: ScreenHeader(title: "옵션", showsLogo: regular, nasStatus: nasHeaderStatus(host: host, client: client), regular: regular,
                                                  noticeUnread: host.announcements.isEmpty ? nil : host.unreadNotices, onNotices: { host.showNotices = true })) {
             AhnaMeaningBanner().padding(.horizontal, regular ? 24 : 16).padding(.top, regular ? 4 : 16).padding(.bottom, regular ? 12 : 0)
-            // 순서: 근처 기기에서 받기(내 기기 이름 · 보낼 때 안내 포함) → 연결된 기기 → 연결 코드 → 기기 추가 → 설정
+            // 순서: 이 기기의 연결 코드 → 근처 기기에서 받기(내 기기 이름) → 연결된 기기 → 기기 추가 → 설정
             if columns >= 3 {
                 HStack(alignment: .top, spacing: 16) {
-                    VStack(spacing: 16) { nearbyCard }.frame(maxWidth: .infinity, alignment: .top)
-                    VStack(spacing: 16) { devicesCard(regular: true); codeCard(regular: true); addCard }.frame(maxWidth: .infinity, alignment: .top)
+                    VStack(spacing: 16) { codeCard(regular: true); nearbyCard }.frame(maxWidth: .infinity, alignment: .top)
+                    VStack(spacing: 16) { devicesCard(regular: true); addCard }.frame(maxWidth: .infinity, alignment: .top)
                     VStack(spacing: 16) {
                         if updateAvailable { updateCard }
                         settingsCard
@@ -931,7 +931,7 @@ struct OptionsScreen: View {
                 .padding(.horizontal, 24).padding(.top, 4).padding(.bottom, 24)
             } else if columns == 2 {
                 HStack(alignment: .top, spacing: 16) {
-                    VStack(spacing: 16) { nearbyCard; devicesCard(regular: true); codeCard(regular: true); addCard }.frame(maxWidth: .infinity, alignment: .top)
+                    VStack(spacing: 16) { codeCard(regular: true); nearbyCard; devicesCard(regular: true); addCard }.frame(maxWidth: .infinity, alignment: .top)
                     VStack(spacing: 16) {
                         if updateAvailable { updateCard }
                         settingsCard
@@ -940,10 +940,10 @@ struct OptionsScreen: View {
                 .padding(.horizontal, 24).padding(.top, 4).padding(.bottom, 24)
             } else {
                 VStack(spacing: 14) {
+                    codeCard(regular: false)
                     nearbyCard
                     if updateAvailable { updateCard }
                     devicesCard(regular: false)
-                    codeCard(regular: false)
                     addCard
                     settingsCard
                 }

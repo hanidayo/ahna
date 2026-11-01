@@ -622,11 +622,11 @@ public class MainActivity extends Activity {
     }
 
     void optionsPhone(LinearLayout body) {
-        // 순서: 근처 기기에서 받기(내 기기 이름 · 보낼 때 안내 포함) → 연결된 기기 → 연결 코드 → 기기 추가 → 설정
+        // 순서: 이 기기의 연결 코드 → 근처 기기에서 받기(내 기기 이름) → 연결된 기기 → 기기 추가 → 설정
         body.addView(meaningCard(), ui.lp(-1, -2, 0, 0, 0, 14));
-        body.addView(nearby.optionsCard());
+        body.addView(codeCard());
+        body.addView(nearby.optionsCard(), ui.lp(-1, -2, 0, 14, 0, 0));
         body.addView(connectionsCard(), ui.lp(-1, -2, 0, 14, 0, 0));
-        body.addView(codeCard(), ui.lp(-1, -2, 0, 14, 0, 0));
         body.addView(addCard(), ui.lp(-1, -2, 0, 14, 0, 0));
         body.addView(settingsCard(), ui.lp(-1, -2, 0, 14, 0, 0));
     }
@@ -640,13 +640,13 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams mid = ui.flex(1); mid.setMargins(dp(16), 0, dp(16), 0);
         LinearLayout b = ui.column();
         b.addView(connectionsCard(), new LinearLayout.LayoutParams(-1, -2));
-        b.addView(codeCard(), ui.lp(-1, -2, 0, 16, 0, 0));
         b.addView(addCard(), ui.lp(-1, -2, 0, 16, 0, 0));
         grid.addView(b, mid);
         LinearLayout c = ui.column();
         c.addView(settingsCard(), new LinearLayout.LayoutParams(-1, -2));
         grid.addView(c, ui.flex(1));
-        a.addView(nearby.optionsCard(), new LinearLayout.LayoutParams(-1, -2));
+        a.addView(codeCard(), new LinearLayout.LayoutParams(-1, -2));
+        a.addView(nearby.optionsCard(), ui.lp(-1, -2, 0, 16, 0, 0));
         body.addView(grid, new LinearLayout.LayoutParams(-1, -2));
     }
 
@@ -661,9 +661,9 @@ public class MainActivity extends Activity {
         LinearLayout b = ui.column();
         b.addView(settingsCard(), new LinearLayout.LayoutParams(-1, -2));
         grid.addView(b, right);
-        a.addView(nearby.optionsCard(), new LinearLayout.LayoutParams(-1, -2));
+        a.addView(codeCard(), new LinearLayout.LayoutParams(-1, -2));
+        a.addView(nearby.optionsCard(), ui.lp(-1, -2, 0, 16, 0, 0));
         a.addView(connectionsCard(), ui.lp(-1, -2, 0, 16, 0, 0));
-        a.addView(codeCard(), ui.lp(-1, -2, 0, 16, 0, 0));
         a.addView(addCard(), ui.lp(-1, -2, 0, 16, 0, 0));
         body.addView(grid, new LinearLayout.LayoutParams(-1, -2));
     }
