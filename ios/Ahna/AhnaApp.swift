@@ -478,7 +478,10 @@ struct SendReceiveScreen: View {
                     fileNotice = "파일 앱 여는 중…"
                     DocumentPicker.shared.present { event in
                         switch event {
-                        case .picked(let urls): fileNotice = "파일 \(urls.count)개를 받았습니다 · 확인 중…"; importFiles(.success(urls))
+                        case .picked(let urls):
+                            importFiles(.success(urls))
+                            // 앱으로 복사된 사본은 보내거나 목록을 비울 때 지웁니다.
+                            tempFolders += urls
                         case .cancelled: fileNotice = "파일 고르기를 취소했습니다."
                         case .failed(let message): fileNotice = message
                         }
@@ -1405,8 +1408,9 @@ struct NoticesSheet: View {
 }
 
 /// 파일 앱에서 고르기. SwiftUI의 fileImporter는 이 화면(메뉴·여러 시트)에서 고른 결과가 돌아오지 않는 경우가 있어
-/// UIKit 문서 선택 창을 맨 위 화면에 직접 띄웁니다. 복사하지 않고 원래 자리의 파일을 읽습니다
-/// (보내는 동안 importFiles가 파일 접근 권한을 유지합니다).
+/// UIKit 문서 선택 창을 맨 위 화면에 직접 띄웁니다.
+/// 고른 파일은 앱으로 복사해서 받습니다(asCopy). 그 자리에서 여는 방식은 직접 서명해 설치한 앱(Feather 등)에서
+/// 시스템이 [열기]에 반응하지 않습니다(시험 앱으로 확인). 같은 저장 공간 안의 파일은 APFS 복제라 거의 바로 끝납니다.
 @MainActor final class DocumentPicker: NSObject, UIDocumentPickerDelegate {
     enum Event { case picked([URL]), cancelled, failed(String) }
     static let shared = DocumentPicker()
@@ -1416,7 +1420,7 @@ struct NoticesSheet: View {
         // 메뉴가 닫히는 중에 띄우면 무시되므로 잠깐 기다립니다.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
             guard let self else { return }
-            let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.item], asCopy: false)
+            let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.item], asCopy: true)
             picker.allowsMultipleSelection = true
             picker.delegate = self
             let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
