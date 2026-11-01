@@ -163,9 +163,9 @@ struct AhnaPage<Content: View>: View {
             header
             NavigationStack {
                 ScrollView {
+                    // 화면 전체에 걸던 '빈 곳 누르면 키보드 내리기' 탭 제스처는 뺐습니다. 메뉴를 여러 번 눌러야 열리고,
+                    // 파일 앱 선택 창의 [열기] 같은 터치까지 가로채는 원인이었습니다(스크롤·키보드 위 '완료'로 내릴 수 있음).
                     content
-                        .contentShape(Rectangle())
-                        .onTapGesture { hideKeyboard() }
                 }
                 .scrollDismissesKeyboard(.immediately)
                 .background(AhnaPalette.bg.ignoresSafeArea())
