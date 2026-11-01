@@ -57,8 +57,12 @@ jobs:
         run: |
           [ -n "$GH_TOKEN" ] || { echo "::error::비밀값 RELEASES_TOKEN이 없습니다."; exit 1; }
           # 같은 버전을 다시 올리면(잠수함 패치) 예전 릴리스를 지우고 새로 만듭니다.
-          if gh release view "v$V" -R "$RELEASES_REPO" >/dev/null 2>&1; then gh release delete "v$V" -R "$RELEASES_REPO" --yes --cleanup-tag; fi
-          gh release create "v$V" -R "$RELEASES_REPO" --draft --title "아나 $V" --notes "빌드 중…"
+          # (취소된 빌드가 남긴 초안은 태그가 없어 --cleanup-tag가 실패하므로 한 번 더 시도)
+          if gh release view "v$V" -R "$RELEASES_REPO" >/dev/null 2>&1; then
+            gh release delete "v$V" -R "$RELEASES_REPO" --yes --cleanup-tag 2>&1 || gh release delete "v$V" -R "$RELEASES_REPO" --yes 2>&1 || echo "::warning::예전 릴리스를 지우지 못했습니다"
+          fi
+          gh release create "v$V" -R "$RELEASES_REPO" --draft --title "아나 $V" --notes "빌드 중…" 2>&1 | sed 's/^/::notice::/'
+          [ "${PIPESTATUS[0]}" -eq 0 ] || { echo "::error::배포 저장소에 릴리스 초안을 만들지 못했습니다 (토큰 권한·만료 확인)"; exit 1; }
 
   server:
     needs: version
