@@ -474,7 +474,16 @@ struct SendReceiveScreen: View {
             }
             Menu {
                 Button { choosingPhotos = true } label: { Label("사진 보관함", systemImage: "photo.on.rectangle") }
-                Button { DocumentPicker.shared.present { urls in importFiles(.success(urls)) } } label: { Label("파일 앱", systemImage: "folder") }
+                Button {
+                    fileNotice = "파일 앱 여는 중…"
+                    DocumentPicker.shared.present { event in
+                        switch event {
+                        case .picked(let urls): fileNotice = "파일 \(urls.count)개를 받았습니다 · 확인 중…"; importFiles(.success(urls))
+                        case .cancelled: fileNotice = "파일 고르기를 취소했습니다."
+                        case .failed(let message): fileNotice = message
+                        }
+                    }
+                } label: { Label("파일 앱", systemImage: "folder") }
             } label: {
                 VStack(spacing: 6) {
                     ZStack {
@@ -592,7 +601,7 @@ struct SendReceiveScreen: View {
                 let files = try FilePreparation.collect(urls)
                 scoped += accessed
                 pending += files
-                fileNotice = ""
+                fileNotice = "파일 \(files.count)개를 첨부했습니다."
             } catch {
                 for url in accessed { url.stopAccessingSecurityScopedResource() }
                 throw error
@@ -1399,9 +1408,10 @@ struct NoticesSheet: View {
 /// UIKit 문서 선택 창을 맨 위 화면에 직접 띄웁니다. 복사하지 않고 원래 자리의 파일을 읽습니다
 /// (보내는 동안 importFiles가 파일 접근 권한을 유지합니다).
 @MainActor final class DocumentPicker: NSObject, UIDocumentPickerDelegate {
+    enum Event { case picked([URL]), cancelled, failed(String) }
     static let shared = DocumentPicker()
-    private var completion: (([URL]) -> Void)?
-    func present(_ completion: @escaping ([URL]) -> Void) {
+    private var completion: ((Event) -> Void)?
+    func present(_ completion: @escaping (Event) -> Void) {
         self.completion = completion
         // 메뉴가 닫히는 중에 띄우면 무시되므로 잠깐 기다립니다.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
@@ -1410,14 +1420,16 @@ struct NoticesSheet: View {
             picker.allowsMultipleSelection = true
             picker.delegate = self
             let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
-            guard var top = scenes.flatMap(\.windows).first(where: \.isKeyWindow)?.rootViewController ?? scenes.first?.windows.first?.rootViewController else { return }
+            guard var top = scenes.flatMap(\.windows).first(where: \.isKeyWindow)?.rootViewController ?? scenes.first?.windows.first?.rootViewController else {
+                self.finish(.failed("파일 앱 창을 띄우지 못했습니다.")); return
+            }
             while let next = top.presentedViewController { top = next }
             top.present(picker, animated: true)
         }
     }
+    private func finish(_ event: Event) { let done = completion; completion = nil; done?(event) }
     func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
-        let done = completion; completion = nil
-        if !urls.isEmpty { done?(urls) }
+        finish(urls.isEmpty ? .failed("고른 파일이 앱에 전달되지 않았습니다(0개).") : .picked(urls))
     }
-    func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) { completion = nil }
+    func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) { finish(.cancelled) }
 }
