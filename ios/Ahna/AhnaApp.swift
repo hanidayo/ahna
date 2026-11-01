@@ -1417,8 +1417,7 @@ struct NoticesSheet: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
             guard let self else { return }
             let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.item], asCopy: false)
-            // 여러 개 고르기 모드에서는 [열기]가 반응하지 않는 경우가 있어 한 번에 하나씩 고릅니다(누르면 바로 첨부, 다시 눌러 더 추가).
-            picker.allowsMultipleSelection = false
+            picker.allowsMultipleSelection = true
             picker.delegate = self
             let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
             guard var top = scenes.flatMap(\.windows).first(where: \.isKeyWindow)?.rootViewController ?? scenes.first?.windows.first?.rootViewController else {

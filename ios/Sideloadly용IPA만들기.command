@@ -25,16 +25,23 @@ test -f "$app/PlugIns/AhnaShare.appex/AhnaShare"
 xcrun lipo -archs "$app/Ahna" | grep -qw arm64
 /usr/bin/ditto "$app" "$build_root/Payload/Ahna.app"
 prepared="$build_root/Payload/Ahna.app"
-xcrun python3 - "$team" "$PWD/Shared/Ahna.entitlements" "$build_root/shared.entitlements" <<'PY'
+# 앱 신원(application-identifier · team-identifier)도 함께 넣습니다. 이것이 없으면 Feather 등으로 다시 서명했을 때
+# 시스템이 앱을 알아보지 못해, 파일 앱 선택 창의 [열기]가 반응하지 않습니다(공유 확장은 영향 없음).
+xcrun python3 - "$team" "$PWD/Shared/Ahna.entitlements" "$build_root/shared.entitlements" "$build_root/share.entitlements" <<'PY'
 import plistlib, sys
 from pathlib import Path
-entitlements = plistlib.loads(Path(sys.argv[2]).read_bytes())
-entitlements['keychain-access-groups'] = [x.replace('$(AppIdentifierPrefix)', sys.argv[1]+'.') for x in entitlements['keychain-access-groups']]
-Path(sys.argv[3]).write_bytes(plistlib.dumps(entitlements))
+team = sys.argv[1]
+base = plistlib.loads(Path(sys.argv[2]).read_bytes())
+base['keychain-access-groups'] = [x.replace('$(AppIdentifierPrefix)', team+'.') for x in base['keychain-access-groups']]
+for out, bundle in ((sys.argv[3], 'com.hanidayo.ahna'), (sys.argv[4], 'com.hanidayo.ahna.share')):
+    e = dict(base)
+    e['application-identifier'] = f'{team}.{bundle}'
+    e['com.apple.developer.team-identifier'] = team
+    Path(out).write_bytes(plistlib.dumps(e))
 PY
 # Give the Windows signer existing, verified signature structures to replace.
 # These ad-hoc signatures do not use an Apple account or authorize installation.
-/usr/bin/codesign --force --sign - --timestamp=none --entitlements "$build_root/shared.entitlements" "$prepared/PlugIns/AhnaShare.appex"
+/usr/bin/codesign --force --sign - --timestamp=none --entitlements "$build_root/share.entitlements" "$prepared/PlugIns/AhnaShare.appex"
 /usr/bin/codesign --force --sign - --timestamp=none --entitlements "$build_root/shared.entitlements" "$prepared"
 /usr/bin/codesign --verify --strict --verbose=2 "$prepared/PlugIns/AhnaShare.appex"
 /usr/bin/codesign --verify --deep --strict --verbose=2 "$prepared"
