@@ -1396,7 +1396,8 @@ struct NoticesSheet: View {
 }
 
 /// 파일 앱에서 고르기. SwiftUI의 fileImporter는 이 화면(메뉴·여러 시트)에서 고른 결과가 돌아오지 않는 경우가 있어
-/// UIKit 문서 선택 창을 맨 위 화면에 직접 띄웁니다. 고른 파일은 앱 임시 폴더로 복사됩니다(asCopy).
+/// UIKit 문서 선택 창을 맨 위 화면에 직접 띄웁니다. 복사하지 않고 원래 자리의 파일을 읽습니다
+/// (보내는 동안 importFiles가 파일 접근 권한을 유지합니다).
 @MainActor final class DocumentPicker: NSObject, UIDocumentPickerDelegate {
     static let shared = DocumentPicker()
     private var completion: (([URL]) -> Void)?
@@ -1405,7 +1406,7 @@ struct NoticesSheet: View {
         // 메뉴가 닫히는 중에 띄우면 무시되므로 잠깐 기다립니다.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
             guard let self else { return }
-            let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.item], asCopy: true)
+            let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.item], asCopy: false)
             picker.allowsMultipleSelection = true
             picker.delegate = self
             let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
