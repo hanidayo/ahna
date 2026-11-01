@@ -158,6 +158,7 @@ jobs:
       - uses: maxim-lobanov/setup-xcode@v1
         with: { xcode-version: latest-stable }
       - run: python3 scripts/set_version.py "${{ needs.version.outputs.v }}"
+      - run: echo "::notice::iOS 빌드 $(xcodebuild -version | tr '\n' ' ')· SDK $(xcrun --sdk iphoneos --show-sdk-version)"
       - name: 서버 주소 넣기
         env: { AHNA_SERVER: "${{ secrets.AHNA_SERVER }}" }
         run: python3 scripts/set_server.py
