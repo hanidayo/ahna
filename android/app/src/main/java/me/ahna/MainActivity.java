@@ -566,10 +566,38 @@ public class MainActivity extends Activity {
         draft.setMaxLines(8);
         draft.setContentDescription("보낼 글자");
         card.addView(draft, ui.lp(-1, -2, 0, 12, 0, 0));
+        LinearLayout buttons = ui.row();
+        Button qrText = ui.outline("QR로 보내기");
+        qrText.setContentDescription("QR로 보내기, 아나가 없는 기기도 QR을 찍어 이 글자를 받을 수 있습니다");
+        qrText.setOnClickListener(v -> sendDraftByQr());
+        buttons.addView(qrText, new LinearLayout.LayoutParams(0, -1, 1));
         Button send = ui.outline("글자 보내기");
         send.setOnClickListener(v -> sendDraft());
-        card.addView(send, ui.lp(-1, 46, 0, 12, 0, 0));
+        LinearLayout.LayoutParams sendLp = new LinearLayout.LayoutParams(0, -1, 1); sendLp.leftMargin = dp(8);
+        buttons.addView(send, sendLp);
+        card.addView(buttons, ui.lp(-1, 46, 0, 12, 0, 0));
         return card;
+    }
+
+    /** 보낼 글자를 '아나-글자.txt' 한 파일로 만들어 QR 보내기 창을 엽니다. */
+    void sendDraftByQr() {
+        String text = draft.getText().toString();
+        if (text.trim().isEmpty()) { draft.requestFocus(); return; }
+        if (nearby == null) return;
+        try {
+            File root = new File(getCacheDir(), "text-qr");
+            File[] old = root.listFiles();
+            if (old != null) for (File f : old) { File[] in = f.listFiles(); if (in != null) for (File x : in) x.delete(); f.delete(); }
+            if (!root.isDirectory() && !root.mkdirs()) throw new java.io.IOException("임시 폴더를 만들 수 없습니다.");
+            File dir = new File(root, java.util.UUID.randomUUID().toString());
+            if (!dir.mkdirs()) throw new java.io.IOException("임시 폴더를 만들 수 없습니다.");
+            File file = new File(dir, "아나-글자.txt");
+            byte[] data = text.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            try (java.io.FileOutputStream out = new java.io.FileOutputStream(file)) { out.write(data); }
+            nearby.showQrText(Uri.fromFile(file), "글자 " + text.length() + "자 · " + Ui.size(data.length));
+        } catch (Exception e) {
+            android.widget.Toast.makeText(this, e.getMessage() == null ? "QR을 만들지 못했습니다." : e.getMessage(), android.widget.Toast.LENGTH_SHORT).show();
+        }
     }
 
     LinearLayout inboxCard() {

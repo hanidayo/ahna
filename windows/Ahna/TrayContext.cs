@@ -800,7 +800,7 @@ internal sealed class TrayContext : ApplicationContext
 	}
 
 	/// <summary>QR 창 (QR로 보내기 / QR로 받기). 하나만 띄웁니다.</summary>
-	private void ShowQr(bool receive)
+	private QrForm ShowQr(bool receive)
 	{
 		QrForm? form = qrForm;
 		if (form == null || form.IsDisposed)
@@ -837,6 +837,39 @@ internal sealed class TrayContext : ApplicationContext
 		form.TopMost = true;
 		Program.Reveal(form);
 		form.TopMost = false;
+		return form;
+	}
+
+	/// <summary>클립보드 창의 [QR로 보내기]: 글자를 '아나-글자.txt' 한 파일로 만들어 QR 보내기 링크를 만듭니다.
+	/// 받는 쪽 웹 화면은 이 이름을 보고 파일 대신 글자와 [복사] 버튼을 보여 줍니다.</summary>
+	private async void SendTextByQr(string text)
+	{
+		try
+		{
+			string root = Path.Combine(Path.GetTempPath(), "Ahna-text");
+			Directory.CreateDirectory(root);
+			foreach (string old in Directory.GetDirectories(root))
+			{
+				try
+				{
+					if (DateTime.UtcNow - Directory.GetCreationTimeUtc(old) > TimeSpan.FromDays(1))
+					{
+						Directory.Delete(old, recursive: true);
+					}
+				}
+				catch
+				{
+				}
+			}
+			string folder = Path.Combine(root, Guid.NewGuid().ToString("N"));
+			Directory.CreateDirectory(folder);
+			string path = Path.Combine(folder, "아나-글자.txt");
+			File.WriteAllText(path, text, new System.Text.UTF8Encoding(false));
+			await ShowQr(receive: false).CreateSendAsync(new[] { path });
+		}
+		catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+		{
+		}
 	}
 
 	private void DeleteOutboundDrop()
@@ -861,6 +894,7 @@ internal sealed class TrayContext : ApplicationContext
 		{
 			// 받을 기기는 보내기 창과 같은 목록 (옵션에서 추가한 기기 + 이 PC에 연결한 기기).
 			clipboardForm = new ClipboardForm(server, outbound, SendTargets);
+			clipboardForm.QrRequested += SendTextByQr;
 		}
 		clipboardForm.Show();
 		if (received)

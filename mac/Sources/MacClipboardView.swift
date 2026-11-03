@@ -68,6 +68,10 @@ import AppKit
                     .buttonStyle(MacButtonStyle(kind: .secondary, height: 34, fullWidth: true, fontSize: 13))
                     .disabled(sending)
                     .help("Mac 클립보드의 글자를 가져옵니다")
+                Button("QR로 보내기") { sendByQR() }
+                    .buttonStyle(MacButtonStyle(kind: .secondary, height: 34, fullWidth: true, fontSize: 13))
+                    .disabled(sending || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !receiver.guestReady)
+                    .help("아나가 없는 기기도 QR을 찍어 이 글자를 받을 수 있습니다")
                 Button("글자 보내기") { sendDraft() }
                     .buttonStyle(MacButtonStyle(kind: .primary, height: 34, fullWidth: true, fontSize: 13))
                     .disabled(sending || client.busy || receiver.clipboardBusy || draft.isEmpty || !targetReady)
@@ -137,6 +141,25 @@ import AppKit
         }
         .padding(.vertical, 8)
         .overlay(alignment: .bottom) { if !isLast { MacHairline() } }
+    }
+
+    /// 글자를 '아나-글자.txt' 한 파일로 만들어 QR 보내기 링크를 엽니다. 받는 쪽 웹 화면은 글자와 [복사] 버튼을 보여 줍니다.
+    private func sendByQR() {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("Ahna-text", isDirectory: true)
+        if let old = try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: [.creationDateKey]) {
+            for item in old where ((try? item.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? Date()) < Date().addingTimeInterval(-86400) {
+                try? FileManager.default.removeItem(at: item)
+            }
+        }
+        let folder = root.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        do {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let file = folder.appendingPathComponent("아나-글자.txt")
+            try draft.data(using: .utf8)?.write(to: file)
+            NearbyCenter.shared.openQR(urls: [file])
+        } catch {
+            notice = "QR을 만들지 못했습니다: " + error.localizedDescription
+        }
     }
 
     private func pasteFromMac() {

@@ -109,6 +109,11 @@ internal sealed class ClipboardForm : Form
 
 	private readonly FlatButton sendButton;
 
+	private readonly FlatButton qrButton;
+
+	/// <summary>[QR로 보내기]: 등록 안 된 기기(휴대폰 카메라)로 글자를 보냅니다.</summary>
+	public event Action<string>? QrRequested;
+
 	private readonly System.Windows.Forms.Timer timer;
 
 	// OnPaint에서 그리는 글자 자리 (LayoutForm이 정합니다)
@@ -179,6 +184,10 @@ internal sealed class ClipboardForm : Form
 		{
 			AccessibleDescription = "복사해 둔 글자를 보낼 글자 칸에 넣습니다 (Ctrl+V)"
 		};
+		qrButton = new FlatButton(this, ButtonKind.Secondary, "QR로 보내기")
+		{
+			AccessibleDescription = "아나가 없는 기기도 QR을 찍어 이 글자를 받을 수 있습니다"
+		};
 		sendButton = new FlatButton(this, ButtonKind.Primary, "글자 보내기")
 		{
 			AccessibleDescription = "Ctrl+Enter"
@@ -188,13 +197,24 @@ internal sealed class ClipboardForm : Form
 		deviceList.TabIndex = 0;
 		editorFrame.TabIndex = 1;
 		pasteButton.TabIndex = 2;
-		sendButton.TabIndex = 3;
-		inboxPanel.TabIndex = 4;
-		footer.TabIndex = 5;
+		qrButton.TabIndex = 3;
+		sendButton.TabIndex = 4;
+		inboxPanel.TabIndex = 5;
+		footer.TabIndex = 6;
 		footer.TabStop = false;
-		Controls.AddRange(new Control[] { deviceList, editorFrame, pasteButton, sendButton, footer, inboxPanel });
+		Controls.AddRange(new Control[] { deviceList, editorFrame, pasteButton, qrButton, sendButton, footer, inboxPanel });
 		pasteButton.Click += (object? _, EventArgs _) => PasteFromClipboard();
 		sendButton.Click += (object? _, EventArgs _) => Send();
+		qrButton.Click += (object? _, EventArgs _) =>
+		{
+			string text = editor.Text;
+			if (text.Trim().Length == 0)
+			{
+				editor.Focus();
+				return;
+			}
+			QrRequested?.Invoke(text);
+		};
 		editor.TextChanged += (object? _, EventArgs _) => OnDraftChanged();
 		deviceList.HandleCreated += (object? _, EventArgs _) => ApplyControlTheme(deviceList, dark);
 		inboxPanel.HandleCreated += (object? _, EventArgs _) => ApplyControlTheme(inboxPanel, dark);
@@ -611,6 +631,7 @@ internal sealed class ClipboardForm : Form
 		sendButton.Text = SendText();
 		sendButton.Enabled = !sending && selected != null;
 		pasteButton.Enabled = !sending;
+		qrButton.Enabled = !sending;
 		LayoutFooter();
 		footer.Invalidate();
 	}
@@ -707,11 +728,13 @@ internal sealed class ClipboardForm : Form
 		{
 			return;
 		}
-		// 보낼 글자 칸 바로 아래: [붙여넣기] [글자 보내기 ────────]
+		// 보낼 글자 칸 바로 아래: [붙여넣기] [QR로 보내기] [글자 보내기 ────────]
 		int gap = S(8);
 		int pasteWidth = pasteButton.PreferredWidth();
+		int qrWidth = qrButton.PreferredWidth();
 		pasteButton.Bounds = new Rectangle(buttonRow.Left, buttonRow.Top, pasteWidth, buttonRow.Height);
-		sendButton.Bounds = new Rectangle(pasteButton.Right + gap, buttonRow.Top, Math.Max(S(120), buttonRow.Right - pasteButton.Right - gap), buttonRow.Height);
+		qrButton.Bounds = new Rectangle(pasteButton.Right + gap, buttonRow.Top, qrWidth, buttonRow.Height);
+		sendButton.Bounds = new Rectangle(qrButton.Right + gap, buttonRow.Top, Math.Max(S(120), buttonRow.Right - qrButton.Right - gap), buttonRow.Height);
 	}
 
 	protected override void OnResize(EventArgs e)

@@ -52,6 +52,7 @@ input.text{width:100%;height:46px;padding:0 14px;border:1px solid var(--border);
 .code{display:flex;gap:6px;margin-top:4px}.code span{display:grid;place-items:center;width:42px;height:50px;border-radius:10px;border:1px solid var(--border);background:var(--surface);font-size:26px;font-weight:700;font-variant-numeric:tabular-nums}
 .error{margin:0;padding:10px 12px;border-radius:10px;background:var(--dangerSoft);color:var(--danger);font-size:13px;overflow-wrap:anywhere}
 footer{margin-top:auto;font-size:12px;color:var(--faint);text-align:center}
+.textBox{display:block;width:100%;min-height:160px;margin-bottom:12px;padding:14px;border-radius:16px;border:1px solid var(--border);background:var(--surface);color:var(--text);font:inherit;font-size:16px;line-height:1.5;resize:vertical;box-sizing:border-box}
 </style>
 </head>
 <body>
@@ -71,6 +72,10 @@ footer{margin-top:auto;font-size:12px;color:var(--faint);text-align:center}
   </section>
 
   <!-- 보내기 (이 링크의 주인에게 올리기) -->
+  <section id="textSec" hidden>
+    <textarea id="textValue" class="textBox" readonly rows="8" aria-label="받은 글자"></textarea>
+    <button id="copyText" type="button" class="primary">복사</button>
+  </section>
   <section id="upload" hidden>
     <label class="pick" id="pickLabel">
       <span class="pickIcon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg></span>
@@ -168,6 +173,26 @@ footer{margin-top:auto;font-size:12px;color:var(--faint);text-align:center}
     if (!r.ok) throw new Error((data && data.error) || '요청하지 못했습니다 (' + r.status + ').');
     return data;
   }
+
+  /* 받기: 상대가 보낸 글자 (아나 앱이 '아나-글자.txt' 한 개로 보냄) */
+  function isText() { return info.text === true || (info.files.length === 1 && info.files[0].name === '아나-글자.txt'); }
+  async function renderText() {
+    $('title').textContent = info.owner + '님이\n글자를 보냈습니다';
+    $('title').style.whiteSpace = 'pre-line';
+    $('subtitle').textContent = '아나로 보낸 글자 · 앱 없이 볼 수 있습니다';
+    $('textSec').hidden = false; $('textValue').value = '불러오는 중…'; $('copyText').disabled = true;
+    try {
+      const r = await fetch(base + '/file/0', { cache: 'no-store', credentials: 'omit' });
+      if (r.status === 404) { ended('링크가 만료되었습니다', '보낸 사람에게 새 링크를 부탁하세요'); $('textSec').hidden = true; return; }
+      if (!r.ok) throw new Error('글자를 받지 못했습니다 (' + r.status + ').');
+      $('textValue').value = await r.text(); $('copyText').disabled = false;
+    } catch (e) { $('textValue').value = ''; error(e.message); }
+  }
+  $('copyText').onclick = async () => {
+    try { await navigator.clipboard.writeText($('textValue').value); }
+    catch (e) { $('textValue').focus(); $('textValue').select(); try { document.execCommand('copy'); } catch (x) {} }
+    $('copyText').textContent = '복사했습니다'; setTimeout(() => { $('copyText').textContent = '복사'; }, 1500);
+  };
 
   /* 받기: 상대가 보낸 파일 */
   function renderReceive() {
@@ -327,6 +352,7 @@ footer{margin-top:auto;font-size:12px;color:var(--faint);text-align:center}
       document.title = '아나 · ' + info.owner;
       if (info.state === 'done') { $('title').textContent = info.owner; $('subtitle').textContent = '아나'; finished(info.kind === 'send' ? '모두 받았습니다' : '보냈습니다'); return; }
       if (info.state === 'declined' || info.state === 'expired') { $('title').textContent = info.owner; $('subtitle').textContent = '아나'; ended('링크가 만료되었습니다', '이 링크는 더 이상 사용할 수 없습니다'); return; }
+      if (info.kind === 'send' && isText()) { renderText(); return; }
       if (info.kind === 'send') renderReceive();
       else if (info.state === 'ready') renderUpload();
       else { $('title').textContent = info.owner + '에게 보내기'; $('subtitle').textContent = '아나'; ended('이미 사용한 링크입니다', '받는 사람에게 새 링크를 부탁하세요'); return; }

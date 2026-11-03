@@ -477,7 +477,7 @@ final class NearbyUi implements NearbyRadio.Listener, Protocol.GuestListener {
         List<File> staged = new ArrayList<>();
         try {
             for (Uri uri : uris) {
-                String display = "파일";
+                String display = "file".equals(uri.getScheme()) && uri.getLastPathSegment() != null ? uri.getLastPathSegment() : "파일";
                 try (Cursor cursor = a.getContentResolver().query(uri, new String[]{OpenableColumns.DISPLAY_NAME}, null, null, null)) {
                     if (cursor != null && cursor.moveToFirst() && cursor.getString(0) != null) display = cursor.getString(0);
                 } catch (Exception ignored) {}
@@ -919,9 +919,15 @@ final class NearbyUi implements NearbyRadio.Listener, Protocol.GuestListener {
     List<Uri> qrFiles = new ArrayList<>();
     int qrAttempt;
 
-    void showQr() {
+    /** QR 창에 보일 보낼 것 요약. 글자를 보낼 때만 씁니다(null이면 파일 요약). */
+    String qrSummary;
+    void showQr() { openQr(new ArrayList<>(a.pending), null); }
+    /** 클립보드 글자를 QR로: '아나-글자.txt' 한 파일을 보내면 받는 쪽 웹 화면이 글자와 [복사] 버튼을 보여 줍니다. */
+    void showQrText(Uri file, String summary) { List<Uri> list = new ArrayList<>(); list.add(file); openQr(list, summary); }
+    void openQr(List<Uri> files, String summary) {
         if (qrDialog != null) return;
-        qrFiles = new ArrayList<>(a.pending);
+        qrFiles = files;
+        qrSummary = summary;
         qrMode = qrFiles.isEmpty() ? "receive" : "send";
         qrBody = a.ui.column();
         qrPrint = "";
@@ -995,7 +1001,7 @@ final class NearbyUi implements NearbyRadio.Listener, Protocol.GuestListener {
         LinearLayout titles = ui.column();
         TextView title = ui.text(send ? "QR로 보내기" : "QR로 받기", 17, ui.text, Ui.BOLD); title.setAccessibilityHeading(true);
         titles.addView(title);
-        titles.addView(Ui.oneLine(ui.text(send ? (qrFiles.isEmpty() ? "보낼 파일이 없습니다" : summary(pendingNames(qrFiles))) : "상대가 이 기기로 파일을 올릴 수 있습니다", 12, ui.faint, Ui.REGULAR)));
+        titles.addView(Ui.oneLine(ui.text(send ? (qrFiles.isEmpty() ? "보낼 파일이 없습니다" : qrSummary != null ? qrSummary : summary(pendingNames(qrFiles))) : "상대가 이 기기로 파일을 올릴 수 있습니다", 12, ui.faint, Ui.REGULAR)));
         head.addView(titles, ui.flex(1));
         b.addView(head, ui.lp(-1, -2, 0, 0, 0, 14));
         // 보내기 / 받기

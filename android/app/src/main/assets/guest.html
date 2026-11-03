@@ -43,6 +43,7 @@ input.t{height:46px;padding:0 14px;border:1px solid var(--border);border-radius:
 .code{font-size:13px;color:var(--muted)}.code b{font-size:20px;color:var(--text);letter-spacing:2px;font-variant-numeric:tabular-nums}
 .err{margin:0;font-size:13px;color:var(--danger);text-align:center}
 footer{margin-top:auto;font-size:12px;color:var(--faint);text-align:center}
+.textBox{width:100%;min-height:180px;max-height:50vh;padding:14px;border:1px solid var(--border);border-radius:16px;background:var(--surface);color:var(--text);font:inherit;font-size:16px;line-height:1.5;resize:vertical;white-space:pre-wrap;word-break:break-word}
 [hidden]{display:none!important}
 </style>
 </head>
@@ -69,6 +70,12 @@ footer{margin-top:auto;font-size:12px;color:var(--faint);text-align:center}
       <span style="font-size:12px;color:var(--faint)">이 링크는 이제 사용할 수 없습니다</span>
       <button type="button" class="btn plain" id="toPhotos" style="margin-top:8px" hidden>사진에 저장</button>
     </div>
+  </section>
+
+  <section id="textSec" hidden style="display:flex;flex-direction:column;gap:12px">
+    <textarea id="textValue" class="textBox" readonly></textarea>
+    <button type="button" class="btn" id="copyText">복사</button>
+    <p class="hint" id="textHint">불러오는 중…</p>
   </section>
 
   <section id="upload" hidden style="display:flex;flex-direction:column;gap:12px">
@@ -171,6 +178,43 @@ footer{margin-top:auto;font-size:12px;color:var(--faint);text-align:center}
     $('footer').textContent = clock(left) + ' 뒤 링크가 사라집니다 · 아나';
     if (left <= 0) { gone(); return; }
     setTimeout(tick, 1000);
+  }
+
+  // ---------- 글자 (클립보드를 QR로 보낸 것) ----------
+  function isText() {
+    return info.text === true || (info.files && info.files.length === 1 && info.files[0].name === '아나-글자.txt');
+  }
+  function setupText() {
+    $('title').innerHTML = '';
+    $('title').appendChild(document.createTextNode(info.owner + '님이'));
+    $('title').appendChild(document.createElement('br'));
+    $('title').appendChild(document.createTextNode('글자를 보냈습니다'));
+    $('subtitle').textContent = '아나로 보낸 클립보드 · 앱 없이 볼 수 있습니다';
+    show('textSec', true);
+    $('copyText').disabled = true;
+    fetch(P + '/file/0', { cache: 'no-store', credentials: 'omit' }).then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.text();
+    }).then(function (t) {
+      $('textValue').value = t;
+      $('copyText').disabled = false;
+      $('textHint').textContent = '이 링크는 이제 사용할 수 없습니다. 창을 닫기 전에 복사하세요';
+    }).catch(function () { $('textHint').textContent = '글자를 받지 못했습니다'; });
+    $('copyText').addEventListener('click', function () {
+      var t = $('textValue').value;
+      function fallback() {
+        var box = $('textValue'); box.removeAttribute('readonly'); box.focus(); box.select();
+        try { box.setSelectionRange(0, t.length); } catch (e) {}
+        var ok = false; try { ok = document.execCommand('copy'); } catch (e) {}
+        box.setAttribute('readonly', ''); copied(ok);
+      }
+      function copied(ok) {
+        $('copyText').textContent = ok ? '복사했습니다' : '길게 눌러 직접 복사하세요';
+        setTimeout(function () { $('copyText').textContent = '복사'; }, 2000);
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(function () { copied(true); }, fallback);
+      else fallback();
+    });
   }
 
   // ---------- 받기 (kind=send) ----------
@@ -357,7 +401,8 @@ footer{margin-top:auto;font-size:12px;color:var(--faint);text-align:center}
     if (!info || ['done', 'declined', 'expired'].indexOf(info.state) >= 0) { gone(); return; }
     left = info.expiresIn | 0;
     $('footer').textContent = clock(left) + ' 뒤 링크가 사라집니다 · 아나';
-    if (info.kind === 'send') setupReceive(); else setupUpload();
+    if (info.kind === 'send' && isText()) setupText();
+    else if (info.kind === 'send') setupReceive(); else setupUpload();
     setTimeout(tick, 1000);
   }).catch(gone);
 })();

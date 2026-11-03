@@ -266,6 +266,8 @@ struct SendReceiveScreen: View {
     @ObservedObject private var history = ReceiveHistory.shared
     @ObservedObject private var log = TransferLog.shared
     @State private var showingQR = false
+    @State private var textQR: [PendingFile] = []
+    @State private var showingTextQR = false
     @State private var nearbySummary = ""
 
     @State private var target = ""
@@ -322,6 +324,9 @@ struct SendReceiveScreen: View {
         }
         .sheet(isPresented: $showingQR) {
             QrShareSheet(host: host, center: nearby, files: pending, summary: pendingSummary, onSent: { clearPending() }, mode: pending.isEmpty ? .receive : .send)
+        }
+        .sheet(isPresented: $showingTextQR) {
+            QrShareSheet(host: host, center: nearby, files: textQR, summary: "글자 " + AhnaText.bytes(textQR.first?.bytes ?? 0), onSent: {}, mode: .send)
         }
         .onChange(of: client.busy) { _, busy in
             // 전송이 끝나면(성공·실패 모두) 상태 문구를 보여 줍니다. 성공 시 목록은 완료 콜백에서 비웁니다.
@@ -704,12 +709,34 @@ struct SendReceiveScreen: View {
                 }
             }
             .ahnaField()
-            Button("글자 보내기") { sendText() }
-                .buttonStyle(AhnaButtonStyle(kind: .outline, height: 46))
-                .disabled(draft.isEmpty || currentTarget == nil || client.busy)
+            HStack(spacing: 8) {
+                Button("QR로 보내기") { sendTextByQR() }
+                    .buttonStyle(AhnaButtonStyle(kind: .outline, height: 46))
+                    .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .accessibilityHint("아나가 없는 기기도 QR을 찍어 이 글자를 받을 수 있습니다")
+                Button("글자 보내기") { sendText() }
+                    .buttonStyle(AhnaButtonStyle(kind: .outline, height: 46))
+                    .disabled(draft.isEmpty || currentTarget == nil || client.busy)
+            }
             if !notice.isEmpty { Text(notice).font(.system(size: 12)).foregroundStyle(AhnaPalette.faint) }
         }
         .ahnaCard()
+    }
+
+    /// 글자를 '아나-글자.txt' 한 파일로 만들어 QR 보내기를 엽니다. 받는 쪽 웹 화면은 글자와 [복사] 버튼을 보여 줍니다.
+    private func sendTextByQR() {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory.appendingPathComponent("Ahna-text", isDirectory: true)
+        try? fm.removeItem(at: root)
+        let folder = root.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        do {
+            try fm.createDirectory(at: folder, withIntermediateDirectories: true)
+            let file = folder.appendingPathComponent("아나-글자.txt")
+            let data = Data(draft.utf8)
+            try data.write(to: file)
+            textQR = [PendingFile(url: file, path: file.path, bytes: Int64(data.count))]
+            showingTextQR = true
+        } catch { notice = error.localizedDescription }
     }
 
     private func sendText() {
