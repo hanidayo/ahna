@@ -351,6 +351,13 @@ internal sealed class TrayContext : ApplicationContext
 				trayContext.ShowTip("아나 · 서버 알림", text, (action == "blocked" || action == "limit") ? ToolTipIcon.Warning : ToolTipIcon.Info);
 			});
 		};
+		server.ClipboardQrRequested = (string text) =>
+		{
+			trayContext.dispatcher.BeginInvoke(() =>
+			{
+				trayContext.SendTextByQr(text);
+			});
+		};
 		server.ClipboardRequested = () =>
 		{
 			trayContext.dispatcher.BeginInvoke(() =>
@@ -842,7 +849,7 @@ internal sealed class TrayContext : ApplicationContext
 
 	/// <summary>클립보드 창의 [QR로 보내기]: 글자를 '아나-글자.txt' 한 파일로 만들어 QR 보내기 링크를 만듭니다.
 	/// 받는 쪽 웹 화면은 이 이름을 보고 파일 대신 글자와 [복사] 버튼을 보여 줍니다.</summary>
-	private async void SendTextByQr(string text)
+	internal async void SendTextByQr(string text)
 	{
 		try
 		{

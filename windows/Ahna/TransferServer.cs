@@ -41,6 +41,8 @@ public sealed class TransferServer : IAsyncDisposable
     /// 서버 관리자가 보낸 알림(action: limit·message·rejoin·blocked, text). rejoin·blocked면 서버 연결 정보를 지웁니다.
     public event Action<string, string>? ServerNotice;
     public Action? ClipboardRequested;
+    /// 웹 화면 클립보드의 [QR로 보내기]: 이 컴퓨터 앱이 글자를 QR 보내기 링크로 만듭니다.
+    public Action<string>? ClipboardQrRequested;
     public Func<string, Task>? PickRequested;
     public Action? SettingsRequested;
     // Owner options page hooks. The host app (Windows tray) supplies platform features;
@@ -550,6 +552,23 @@ public sealed class TransferServer : IAsyncDisposable
             catch { try { Directory.Delete(folder, true); } catch { } throw; }
         });
         app.MapPost("/api/admin/clipboard/open", (HttpContext c) => { if (Authenticate(c)?.Owner != true) return Results.Unauthorized(); ClipboardRequested?.Invoke(); return Results.Ok(); });
+        app.MapPost("/api/admin/clipboard/qr", async (HttpContext c) =>
+        {
+            if (Authenticate(c)?.Owner != true) return Results.Unauthorized();
+            if (ClipboardQrRequested is null) return Results.StatusCode(501);
+            const int maxBody = 4 * 1024 * 1024;
+            if (c.Request.ContentLength is > maxBody) return Results.StatusCode(413);
+            using var body = new MemoryStream(); var buffer = new byte[8192]; int read;
+            while ((read = await c.Request.Body.ReadAsync(buffer, c.RequestAborted)) > 0)
+            {
+                if (body.Length + read > maxBody) return Results.StatusCode(413);
+                body.Write(buffer, 0, read);
+            }
+            var input = JsonSerializer.Deserialize<ClipboardInput>(body.ToArray(), Util.Json);
+            if (input is null || string.IsNullOrWhiteSpace(input.Text)) return Results.BadRequest();
+            ClipboardQrRequested(input.Text);
+            return Results.Ok();
+        });
         app.MapPost("/api/admin/clipboard", async (HttpContext c) =>
         {
             if (Authenticate(c)?.Owner != true) return Results.Unauthorized();

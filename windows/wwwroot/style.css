@@ -25,6 +25,7 @@ button{font:inherit}
 .btn:focus-visible,.chip:focus-visible,.switch:focus-visible,.iconBtn:focus-visible,.drop:focus-visible,.drop:focus-within,.quiet:focus-visible,.download:focus-visible,.url:focus-visible{outline:none;box-shadow:0 0 0 3px var(--focus)}
 .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--onAccent);font-weight:700}.btn.primary:hover{background:var(--accentHover);border-color:var(--accentHover)}
 .btn.wide{width:100%;height:40px;font-size:14px;border-radius:10px}
+.clipButtons{display:flex;gap:8px}.clipButtons .btn.wide{width:auto;flex:1 1 0;min-width:0}.clipButtons #qrClipboard{flex:0 0 auto;padding:0 16px}
 .btn.small{height:30px;padding:0 10px;font-size:12px;border-radius:8px}
 .btn.big{height:40px;padding:0 18px;font-size:14px;border-radius:10px}.btn.primary.big{padding:0 22px}
 .btn.accentText{color:var(--accent)}

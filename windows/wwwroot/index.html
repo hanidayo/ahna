@@ -81,7 +81,7 @@
         <div class="panelHead"><h2>클립보드</h2><div class="headActions"><button id="nativeClipboard" type="button" class="btn small" hidden>Windows 클립보드 창</button><button id="pasteClipboard" type="button" class="btn small">붙여넣기</button></div></div>
         <div class="panelBody stack">
           <label for="clipboardDraft" class="srOnly">보낼 글자 · 최대 64 KB</label><textarea id="clipboardDraft" rows="4" placeholder="보낼 글자를 입력하거나 붙여넣으세요 · 최대 64 KB"></textarea>
-          <button id="sendClipboard" type="button" class="btn primary wide">글자 보내기</button>
+          <div class="clipButtons"><button id="qrClipboard" type="button" class="btn wide" hidden title="아나가 없는 기기도 QR을 찍어 이 글자를 받을 수 있습니다">QR로 보내기</button><button id="sendClipboard" type="button" class="btn primary wide">글자 보내기</button></div>
           <div id="clipboardInbox" class="clipList" aria-label="받은 글자"></div>
           <p class="fine">받은 글자는 최근 20개를 최대 24시간 보관하며, 컴퓨터의 아나를 종료하면 지워집니다.</p>
         </div>

@@ -492,6 +492,7 @@ function renderClipboard(s) {
   $('clipboardPanel').hidden = !Array.isArray(s.clipboard);
   if (!Array.isArray(s.clipboard)) return;
   $('nativeClipboard').hidden = !s.owner;
+  $('qrClipboard').hidden = !s.owner;
   updateClipboardButton();
   $('clipboardInbox').replaceChildren();
   const ids = new Set(s.clipboard.map(c => c.id));
@@ -522,6 +523,14 @@ $('pasteClipboard').onclick = async () => {
     if (!navigator.clipboard?.readText) throw new Error();
     $('clipboardDraft').value = await navigator.clipboard.readText();
   } catch { $('clipboardDraft').focus(); message('입력칸을 길게 누르거나 Ctrl+V로 붙여넣어 주세요.'); }
+};
+$('qrClipboard').onclick = async () => {
+  const text = $('clipboardDraft').value;
+  if (!text.trim().length) { message('보낼 글자를 먼저 붙여넣어 주세요.'); $('clipboardDraft').focus(); return; }
+  $('qrClipboard').disabled = true;
+  try { await api('/api/admin/clipboard/qr', {text}); message('QR 창을 열었습니다. 받을 기기 카메라로 QR을 찍으면 글자가 보입니다.'); }
+  catch(e) { message(e.message); }
+  finally { $('qrClipboard').disabled = false; }
 };
 $('sendClipboard').onclick = async () => {
   const text = $('clipboardDraft').value;
