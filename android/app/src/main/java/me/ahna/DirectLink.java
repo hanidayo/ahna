@@ -176,6 +176,7 @@ final class DirectLink {
     /** 요청 하나를 보내고 응답 머리까지 받습니다. 실패는 모두 Unavailable(서버로 다시 보내면 됨). */
     static Response request(JSONObject info, String method, String path, long length, String type, Body body) throws IOException {
         Socket socket = connect(info);
+        boolean delivered = false;
         try {
             socket.setSoTimeout(60000);
             byte[] secret = android.util.Base64.decode(info.getString("key"), android.util.Base64.NO_WRAP);
@@ -192,13 +193,20 @@ final class DirectLink {
             outbound.write(out, headBytes, 0, headBytes.length);
             if (body != null) { SealStream seal = new SealStream(out, outbound, length); body.write(seal); seal.finish(); }
             out.flush();
+            // 파일 본문을 다 보낸 뒤에는 상대가 이미 저장했을 수 있어 서버로 다시 보내지 않습니다(같은 파일이 두 번 생기지 않게).
+            delivered = length > 0;
+            socket.setSoTimeout(45 * 60000);
             Cipher inbound = new Cipher(secret, "s2c", salt);
             JSONObject reply = new JSONObject(new String(inbound.read(in), StandardCharsets.UTF_8));
+            socket.setSoTimeout(60000);
             int status = reply.getInt("s"); long bodyLength = reply.getLong("l");
             if (status < 100 || status > 599 || bodyLength < 0 || bodyLength > Protocol.MAX) throw new IOException("올바르지 않은 응답");
+            // 401: 연결 정보가 바뀌었을 수 있으니(저장되지 않음) 서버를 거쳐 다시 확인합니다.
+            if (status == 401) { delivered = false; throw new Unavailable("직접 연결 인증이 바뀌었습니다."); }
             return new Response(status, bodyLength, new OpenStream(in, inbound, bodyLength), socket);
         } catch (Exception e) {
             try { socket.close(); } catch (IOException ignored) {}
+            if (delivered) throw new IOException("상대 기기의 저장 결과를 받지 못했습니다. 상대 기기에서 파일을 확인하세요.", e);
             throw e instanceof Unavailable ? (Unavailable) e : new Unavailable("직접 전송이 끊겼습니다.", e);
         }
     }
@@ -208,7 +216,7 @@ final class DirectLink {
     // ---------------------------------------------------------------------------------
 
     static final class Host implements Closeable {
-        private static final class Key { final String id; final byte[] secret; final String token; final long created; Key(String id, byte[] secret, String token, long created) { this.id = id; this.secret = secret; this.token = token; this.created = created; } }
+        private static final class Key { final Set<String> seen = new HashSet<>(); final String id; final byte[] secret; final String token; final long created; Key(String id, byte[] secret, String token, long created) { this.id = id; this.secret = secret; this.token = token; this.created = created; } }
         private final Map<String, Key> keys = new ConcurrentHashMap<>();
         private final Map<String, String> byToken = new ConcurrentHashMap<>();
         private final ThreadPoolExecutor workers = new ThreadPoolExecutor(0, 8, 30, TimeUnit.SECONDS, new SynchronousQueue<>());
@@ -285,15 +293,17 @@ final class DirectLink {
                 Key key = keys.get(hex.toString());
                 if (key == null || System.currentTimeMillis() - key.created > 3600_000L) return;
                 byte[] salt = Arrays.copyOfRange(hello, 24, 40);
+                // 같은 연결 내용을 다시 보내는(재전송) 것을 막습니다.
+                synchronized (key.seen) { if (key.seen.size() > 20000 || !key.seen.add(Arrays.toString(salt))) return; }
                 Cipher inbound = new Cipher(key.secret, "c2s", salt), outbound = new Cipher(key.secret, "s2c", salt);
                 JSONObject head = new JSONObject(new String(inbound.read(in), StandardCharsets.UTF_8));
-                String method = head.getString("m"), path = head.getString("p"); long length = head.getLong("l"); String type = head.optString("t", "");
+                String method = head.getString("m"), path = head.getString("p"); long length = head.getLong("l"); String type = head.isNull("t") ? "" : head.optString("t", "");
                 s.setSoTimeout(60000);
                 if (!allowed(method, path, length)) { respond(out, outbound, 400, new byte[0]); return; }
                 // 이 기기의 아나(127.0.0.1)로 넘깁니다. 받는 쪽 Protocol은 늘 Content-Length로 답합니다.
                 try (Socket local = new Socket()) {
                     local.connect(new InetSocketAddress(InetAddress.getByAddress(new byte[]{127, 0, 0, 1}), localPort), 5000);
-                    local.setSoTimeout(60000);
+                    local.setSoTimeout(45 * 60000);
                     OutputStream lo = new BufferedOutputStream(local.getOutputStream(), 1 << 16);
                     InputStream li = new BufferedInputStream(local.getInputStream(), 1 << 16);
                     String request = method + " " + path + " HTTP/1.1\r\nHost: 127.0.0.1:" + localPort + "\r\nCookie: ahna=" + key.token + "\r\nContent-Length: " + length + "\r\n"

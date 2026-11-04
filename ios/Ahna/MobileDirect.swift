@@ -1,11 +1,17 @@
 import Foundation
 import Network
+import Security
 
 /// 같은 네트워크 직접 받기: 공유기 안에서 들어오는 직접 연결(DirectLink.swift 형식)을 받아
 /// 이 기기의 아나(127.0.0.1)로 넘깁니다. Windows·Mac은 src/DirectChannel.cs 의 DirectHost가 같은 일을 합니다.
 final class MobileDirectHost: @unchecked Sendable {
     static let port: UInt16 = 45853
-    private struct Key { let id: String; let secret: Data; let token: String; let created: Date }
+    private final class Key {
+        let id: String; let secret: Data; let token: String; let created: Date
+        /// 이미 쓴 salt: 같은 연결 내용을 다시 보내는(재전송) 것을 막습니다.
+        var seen = Set<Data>()
+        init(id: String, secret: Data, token: String, created: Date) { self.id = id; self.secret = secret; self.token = token; self.created = created }
+    }
     private let lock = NSLock()
     private var keys: [String: Key] = [:]
     private var byToken: [String: String] = [:]
@@ -76,9 +82,10 @@ final class MobileDirectHost: @unchecked Sendable {
         return ["id": key.id, "key": key.secret.base64EncodedString(), "port": Int(Self.port), "addrs": addrs]
     }
 
-    private func lookup(_ id: String) -> Key? {
+    /// 키를 찾고, 이 salt가 처음이면 기록합니다(재전송이면 nil).
+    private func lookup(_ id: String, salt: Data) -> Key? {
         lock.lock(); defer { lock.unlock() }
-        guard let key = keys[id], Date().timeIntervalSince(key.created) < 3600 else { return nil }
+        guard let key = keys[id], Date().timeIntervalSince(key.created) < 3600, key.seen.count < 20000, key.seen.insert(salt).inserted else { return nil }
         return key
     }
 
@@ -110,7 +117,7 @@ final class MobileDirectHost: @unchecked Sendable {
         guard hello.prefix(8) == DirectLink.magic else { return }
         let id = Self.hex(hello.subdata(in: 8..<24))
         let salt = hello.subdata(in: 24..<40)
-        guard let key = lookup(id) else { return }
+        guard let key = lookup(id, salt: salt) else { return }
         let inbound = DirectLink.Cipher(secret: key.secret, label: "c2s", salt: salt)
         let outbound = DirectLink.Cipher(secret: key.secret, label: "s2c", salt: salt)
         guard let head = try JSONSerialization.jsonObject(with: try await link.readRecord(inbound)) as? [String: Any],

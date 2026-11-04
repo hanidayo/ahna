@@ -26,10 +26,17 @@ struct DirectInfo: Decodable, Equatable, Sendable {
 
 /// 직접 연결이 안 되거나 도중에 끊김: 서버를 거쳐 다시 보내면 됩니다.
 struct DirectUnavailable: Error {}
+/// 파일 본문은 다 보냈는데 결과를 못 받음: 상대가 이미 저장했을 수 있어 서버로 다시 보내지 않습니다.
+struct DirectDelivered: LocalizedError {
+    var errorDescription: String? { "상대 기기의 저장 결과를 받지 못했습니다. 상대 기기에서 파일을 확인하세요." }
+}
 
 enum DirectLink {
     static let recordSize = 1 << 20
     static let magic = Data("AHNADR01".utf8)
+    /// 레코드 하나를 주고받는 최대 시간(상대가 사라져도 멈춰 있지 않게), 본문을 다 보낸 뒤 응답을 기다리는 최대 시간.
+    static let idle: TimeInterval = 60
+    static let reply: TimeInterval = 45 * 60
 
     final class Cipher: @unchecked Sendable {
         private let key: SymmetricKey
@@ -66,32 +73,44 @@ enum DirectLink {
     final class Link: @unchecked Sendable {
         let connection: NWConnection
         init(_ connection: NWConnection) { self.connection = connection }
+        /// 정해진 시간 안에 끝나지 않거나 작업이 취소되면 연결을 끊습니다(그러면 기다리던 쪽이 오류로 깨어남).
+        private func guarded<T>(_ seconds: TimeInterval, _ body: () async throws -> T) async throws -> T {
+            let connection = connection
+            let timer = DispatchWorkItem { connection.cancel() }
+            DispatchQueue.global().asyncAfter(deadline: .now() + seconds, execute: timer)
+            defer { timer.cancel() }
+            return try await withTaskCancellationHandler { try await body() } onCancel: { connection.cancel() }
+        }
         func send(_ data: Data) async throws {
-            try await withCheckedThrowingContinuation { (k: CheckedContinuation<Void, Error>) in
-                connection.send(content: data, completion: .contentProcessed { error in
-                    if let error { k.resume(throwing: error) } else { k.resume() }
-                })
-            }
-        }
-        func receive(_ count: Int) async throws -> Data {
-            var result = Data()
-            while result.count < count {
-                try Task.checkCancellation()
-                let want = count - result.count
-                let piece: Data = try await withCheckedThrowingContinuation { k in
-                    connection.receive(minimumIncompleteLength: 1, maximumLength: want) { data, _, complete, error in
-                        if let error { k.resume(throwing: error) }
-                        else if let data, !data.isEmpty { k.resume(returning: data) }
-                        else if complete { k.resume(throwing: DirectUnavailable()) }
-                        else { k.resume(returning: Data()) }
-                    }
+            try await guarded(DirectLink.idle) {
+                try await withCheckedThrowingContinuation { (k: CheckedContinuation<Void, Error>) in
+                    connection.send(content: data, completion: .contentProcessed { error in
+                        if let error { k.resume(throwing: error) } else { k.resume() }
+                    })
                 }
-                result.append(piece)
             }
-            return result
         }
-        func readRecord(_ cipher: Cipher) async throws -> Data {
-            let head = try await receive(4)
+        func receive(_ count: Int, wait: TimeInterval = DirectLink.idle) async throws -> Data {
+            try await guarded(wait) {
+                var result = Data()
+                while result.count < count {
+                    try Task.checkCancellation()
+                    let want = count - result.count
+                    let piece: Data = try await withCheckedThrowingContinuation { k in
+                        connection.receive(minimumIncompleteLength: 1, maximumLength: want) { data, _, complete, error in
+                            if let error { k.resume(throwing: error) }
+                            else if let data, !data.isEmpty { k.resume(returning: data) }
+                            else if complete { k.resume(throwing: DirectUnavailable()) }
+                            else { k.resume(returning: Data()) }
+                        }
+                    }
+                    result.append(piece)
+                }
+                return result
+            }
+        }
+        func readRecord(_ cipher: Cipher, wait: TimeInterval = DirectLink.idle) async throws -> Data {
+            let head = try await receive(4, wait: wait)
             let length = head.reduce(0) { $0 << 8 | Int($1) }
             guard length >= 16, length <= DirectLink.recordSize + 16 else { throw DirectUnavailable() }
             return try cipher.open(try await receive(length))
@@ -175,6 +194,7 @@ enum DirectLink {
                         body: ((_ write: (Data) async throws -> Void) async throws -> Void)? = nil) async throws -> Response {
         guard info.usable, let secret = Data(base64Encoded: info.key), let id = hexData(info.id) else { throw DirectUnavailable() }
         let link = try await connect(info)
+        var delivered = false
         do {
             var salt = Data(count: 16)
             guard salt.withUnsafeMutableBytes({ SecRandomCopyBytes(kSecRandomDefault, 16, $0.baseAddress!) }) == errSecSuccess else { throw DirectUnavailable() }
@@ -197,16 +217,19 @@ enum DirectLink {
                 }
             }
             guard sent == length else { throw DirectUnavailable() }
+            delivered = length > 0
             let inbound = Cipher(secret: secret, label: "s2c", salt: salt)
-            let reply = try await link.readRecord(inbound)
+            let reply = try await link.readRecord(inbound, wait: DirectLink.reply)
             guard let object = try JSONSerialization.jsonObject(with: reply) as? [String: Any],
                   let status = (object["s"] as? NSNumber)?.intValue, let bodyLength = (object["l"] as? NSNumber)?.int64Value,
                   (100...599).contains(status), bodyLength >= 0 else { throw DirectUnavailable() }
+            // 401: 연결 정보가 바뀌었을 수 있으니(저장되지 않음) 서버를 거쳐 다시 확인합니다.
+            if status == 401 { delivered = false; throw DirectUnavailable() }
             return Response(status: status, length: bodyLength, link: link, cipher: inbound)
         } catch is CancellationError {
             link.close(); throw CancellationError()
         } catch {
-            link.close(); throw DirectUnavailable()
+            link.close(); throw delivered ? DirectDelivered() : DirectUnavailable()
         }
     }
 
@@ -223,7 +246,7 @@ enum DirectLink {
             }
         }
         defer { response.link.close() }
-        do { return (response.status, try await response.data()) } catch is CancellationError { throw CancellationError() } catch { throw DirectUnavailable() }
+        do { return (response.status, try await response.data()) } catch is CancellationError { throw CancellationError() } catch { throw bytes > 0 ? DirectDelivered() : DirectUnavailable() }
     }
 
     /// 짧은 요청(GET, 작은 POST).

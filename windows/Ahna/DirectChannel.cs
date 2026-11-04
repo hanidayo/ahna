@@ -27,6 +27,10 @@ public static class DirectWire
 {
     public const int FirstPort = 45853;
     public const int RecordSize = 1 << 20;
+    /// 레코드 하나를 주고받는 최대 시간. 상대가 사라지면 이만큼 뒤에 끊습니다.
+    public static readonly TimeSpan Idle = TimeSpan.FromSeconds(60);
+    /// 본문을 다 보낸 뒤 응답을 기다리는 최대 시간(받는 쪽이 큰 파일을 옮기는 시간).
+    public static readonly TimeSpan Reply = TimeSpan.FromMinutes(45);
     public static readonly byte[] Magic = "AHNADR01"u8.ToArray();
 
     public static byte[] Derive(byte[] key, string label, byte[] salt)
@@ -52,16 +56,27 @@ public static class DirectWire
             var frame = new byte[4 + plain.Length + 16];
             BinaryPrimitives.WriteUInt32BigEndian(frame, (uint)(plain.Length + 16));
             aes.Encrypt(Nonce(), plain.Span, frame.AsSpan(4, plain.Length), frame.AsSpan(4 + plain.Length, 16));
-            await stream.WriteAsync(frame, ct);
+            using var idle = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            idle.CancelAfter(Idle);
+            try { await stream.WriteAsync(frame, idle.Token); }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested) { throw new IOException("상대 기기가 응답하지 않습니다."); }
         }
-        public async Task<byte[]> ReadAsync(Stream stream, CancellationToken ct)
+        /// wait: 이 레코드를 기다릴 최대 시간(기본 Idle). 상대가 사라져도 멈춰 있지 않게 합니다.
+        public async Task<byte[]> ReadAsync(Stream stream, CancellationToken ct, TimeSpan? wait = null)
         {
+            using var idle = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            idle.CancelAfter(wait ?? Idle);
             var head = new byte[4];
-            await stream.ReadExactlyAsync(head, ct);
-            var length = BinaryPrimitives.ReadUInt32BigEndian(head);
-            if (length < 16 || length > RecordSize + 16) throw new IOException("올바르지 않은 직접 전송 데이터입니다.");
-            var frame = new byte[length];
-            await stream.ReadExactlyAsync(frame, ct);
+            var frame = Array.Empty<byte>();
+            try
+            {
+                await stream.ReadExactlyAsync(head, idle.Token);
+                var length = BinaryPrimitives.ReadUInt32BigEndian(head);
+                if (length < 16 || length > RecordSize + 16) throw new IOException("올바르지 않은 직접 전송 데이터입니다.");
+                frame = new byte[length];
+                await stream.ReadExactlyAsync(frame, idle.Token);
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested) { throw new IOException("상대 기기가 응답하지 않습니다."); }
             var plain = new byte[length - 16];
             try { aes.Decrypt(Nonce(), frame.AsSpan(0, plain.Length), frame.AsSpan(plain.Length), plain); }
             catch (CryptographicException) { throw new IOException("직접 전송 데이터를 확인하지 못했습니다."); }
@@ -131,7 +146,8 @@ public static class DirectWire
             if (offset == current.Length)
             {
                 if (left == 0) return 0;
-                current = await cipher.ReadAsync(inner, ct);
+                try { current = await cipher.ReadAsync(inner, ct); }
+                catch (IOException e) when (owns && e is not DirectClient.Unavailable) { throw new DirectClient.Unavailable("직접 받기가 끊겼습니다.", e); }
                 offset = 0;
                 if (current.Length == 0 || current.Length > left) throw new IOException("올바르지 않은 직접 전송 데이터입니다.");
                 left -= current.Length;
@@ -173,7 +189,11 @@ public static class DirectWire
 /// 받는 기기 쪽: 공유기 안에서 들어오는 직접 연결을 받아 이 기기의 아나(127.0.0.1)로 넘깁니다.
 public sealed class DirectHost : IAsyncDisposable
 {
-    sealed record Key(string Id, byte[] Secret, string Token, DateTimeOffset Created);
+    sealed record Key(string Id, byte[] Secret, string Token, DateTimeOffset Created)
+    {
+        /// 이미 쓴 salt: 같은 연결 내용을 다시 보내는(재전송) 것을 막습니다.
+        public HashSet<string> Seen { get; } = new();
+    }
     sealed record Head(string M, string P, long L, string? T);
     static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
     readonly ConcurrentDictionary<string, Key> keys = new();
@@ -263,6 +283,10 @@ public sealed class DirectHost : IAsyncDisposable
         var id = Convert.ToHexString(hello, 8, 16).ToLowerInvariant();
         if (!keys.TryGetValue(id, out var key) || DateTimeOffset.UtcNow - key.Created > TimeSpan.FromHours(1)) return;
         var salt = hello[24..40];
+        lock (key.Seen)
+        {
+            if (key.Seen.Count > 20000 || !key.Seen.Add(Convert.ToHexString(salt))) return;
+        }
         using var inbound = new DirectWire.Cipher(DirectWire.Derive(key.Secret, "c2s", salt));
         using var outbound = new DirectWire.Cipher(DirectWire.Derive(key.Secret, "s2c", salt));
         var head = JsonSerializer.Deserialize<Head>(await inbound.ReadAsync(stream, timeout.Token), JsonOptions);
@@ -365,7 +389,7 @@ public static class DirectClient
             if (winner is null) { winner = socket; race.Cancel(); }
             else socket.Dispose();
         }
-        ct.ThrowIfCancellationRequested();
+        if (ct.IsCancellationRequested) { winner?.Dispose(); ct.ThrowIfCancellationRequested(); }
         if (winner is null) throw new Unavailable("같은 네트워크에서 상대 기기에 바로 연결하지 못했습니다.");
         return new NetworkStream(winner, ownsSocket: true);
     }
@@ -375,6 +399,7 @@ public static class DirectClient
         long length = content is null ? 0 : content.Headers.ContentLength ?? throw new ArgumentException("본문 길이가 필요합니다.");
         var stream = await ConnectAsync(info, ct);
         DirectWire.Cipher? inbound = null;
+        var delivered = false;
         try
         {
             var salt = RandomNumberGenerator.GetBytes(16);
@@ -394,11 +419,15 @@ public static class DirectClient
                 }
                 await stream.FlushAsync(ct);
             }
+            // 파일 본문을 다 보낸 뒤에는 상대가 이미 저장했을 수 있어 서버로 다시 보내지 않습니다(같은 파일이 두 번 생기지 않게).
+            delivered = length > 0;
             inbound = new DirectWire.Cipher(DirectWire.Derive(info.Key, "s2c", salt));
-            using var head = JsonDocument.Parse(await inbound.ReadAsync(stream, ct));
+            using var head = JsonDocument.Parse(await inbound.ReadAsync(stream, ct, DirectWire.Reply));
             var status = head.RootElement.GetProperty("s").GetInt32();
             var bodyLength = head.RootElement.GetProperty("l").GetInt64();
             if (status is < 100 or > 599 || bodyLength < 0 || bodyLength > TransferServer.MaxFile) throw new IOException("올바르지 않은 직접 전송 응답입니다.");
+            // 401: 연결 정보가 바뀌었을 수 있으니 서버를 거쳐 다시 확인합니다(직접 연결 키가 예전 세션 것일 때).
+            if (status == 401) { delivered = false; throw new Unavailable("직접 연결 인증이 바뀌었습니다."); }
             var response = new HttpResponseMessage((HttpStatusCode)status) { Content = new StreamContent(new DirectWire.OpenStream(stream, inbound, bodyLength, owns: true), 65536) };
             response.Content.Headers.ContentLength = bodyLength;
             return response;
@@ -407,6 +436,7 @@ public static class DirectClient
         catch (Exception e) when (e is IOException or SocketException or JsonException or KeyNotFoundException or InvalidOperationException or FormatException)
         {
             inbound?.Dispose(); stream.Dispose();
+            if (delivered) throw new IOException("상대 기기의 저장 결과를 받지 못했습니다. 상대 기기에서 파일을 확인하세요.", e);
             throw e as Unavailable ?? new Unavailable("직접 전송이 끊겼습니다.", e);
         }
     }

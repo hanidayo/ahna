@@ -1015,10 +1015,20 @@ internal sealed class OutboundDevices : TransferServer.IExternalDevices, IDispos
 				using HttpResponseMessage download = await Request(p, HttpMethod.Get, "/api/download/" + id + "?kind=clipboard");
 				await using Stream input = await download.Content.ReadAsStreamAsync(stop.Token);
 				byte[] buffer = new byte[expected + 1];
-				int count = await input.ReadAtLeastAsync(buffer, expected, throwOnEndOfStream: false, stop.Token);
-				if (count != expected || await input.ReadAsync(new byte[1], stop.Token) != 0)
+				int count;
+				try
 				{
-					throw new InvalidDataException("받은 글자의 크기가 다릅니다.");
+					count = await input.ReadAtLeastAsync(buffer, expected, throwOnEndOfStream: false, stop.Token);
+					if (count != expected || await input.ReadAsync(new byte[1], stop.Token) != 0)
+					{
+						throw new InvalidDataException("받은 글자의 크기가 다릅니다.");
+					}
+				}
+				catch (DirectClient.Unavailable)
+				{
+					// 다음 상태 확인 때 서버를 거쳐 다시 받습니다.
+					DirectFailed(p);
+					continue;
 				}
 				string text = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true).GetString(buffer, 0, count);
 				MarkReceived(key);
@@ -1038,6 +1048,11 @@ internal sealed class OutboundDevices : TransferServer.IExternalDevices, IDispos
 		string temporary = Path.Combine(folder, ".ahna-" + Guid.NewGuid().ToString("N") + ".part");
 		try
 		{
+			// 같은 네트워크 직접 받기가 도중에 끊기면 한 번 더: 그때는 서버를 거쳐 받습니다.
+			for (int attempt = 0; ; attempt++)
+			{
+			try
+			{
 			using (HttpResponseMessage download = await Request(p, HttpMethod.Get, "/api/download/" + id))
 			{
 				if (download.Content.Headers.ContentLength != bytes)
@@ -1062,6 +1077,20 @@ internal sealed class OutboundDevices : TransferServer.IExternalDevices, IDispos
 				{
 					throw new IOException("파일 받기가 중단되었습니다.");
 				}
+			}
+			break;
+			}
+			catch (DirectClient.Unavailable) when (attempt == 0)
+			{
+				DirectFailed(p);
+				try
+				{
+					File.Delete(temporary);
+				}
+				catch
+				{
+				}
+			}
 			}
 			string destination = Path.Combine(folder, name);
 			for (int i = 1; ; i++)
