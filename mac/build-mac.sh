@@ -14,7 +14,7 @@ for lang in ko en Base; do mkdir -p "dist/Ahna.app/Contents/Resources/$lang.lpro
 extension=dist/Ahna.app/Contents/PlugIns/AhnaSend.appex
 mkdir -p "$extension/Contents/MacOS" "$extension/Contents/Resources"
 for arch in arm64 x86_64; do
-  xcrun swiftc -parse-as-library -application-extension -O -target "$arch-apple-macosx13.0" -Xlinker -e -Xlinker _NSExtensionMain Sources/Brand.swift Sources/NearbyRadio.swift Sources/AhnaClient.swift Sources/ConfigurationCache.swift Sources/ReceiveHistory.swift Sources/ReceiveFolder.swift Sources/ReceivedFileStore.swift Sources/PhotoLibrarySaver.swift Sources/ConnectionStatusBadge.swift ShareExtension/*.swift -o "build/Share-$arch"
+  xcrun swiftc -parse-as-library -application-extension -O -target "$arch-apple-macosx13.0" -Xlinker -e -Xlinker _NSExtensionMain Sources/Brand.swift Sources/NearbyRadio.swift Sources/AhnaClient.swift Sources/DirectLink.swift Sources/ConfigurationCache.swift Sources/ReceiveHistory.swift Sources/ReceiveFolder.swift Sources/ReceivedFileStore.swift Sources/PhotoLibrarySaver.swift Sources/ConnectionStatusBadge.swift ShareExtension/*.swift -o "build/Share-$arch"
 done
 lipo -create build/Share-arm64 build/Share-x86_64 -output "$extension/Contents/MacOS/AhnaShare"
 cp Bundle/Ahna.icns "$extension/Contents/Resources/Ahna.icns"

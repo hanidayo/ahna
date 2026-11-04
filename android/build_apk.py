@@ -13,7 +13,7 @@ tools=next((p.parent for p in sdk.rglob('aapt2'+suffix) if p.parent.name=='35.0.
 env=os.environ.copy();env['JAVA_HOME']=str(jdk);env['PATH']=str(jdk/'bin')+os.pathsep+env.get('PATH','')
 def run(args):subprocess.run([os.path.relpath(x) if isinstance(x,pathlib.Path) else str(x) for x in args],check=True,env=env)
 run([tools/('aapt2'+suffix),'compile','--dir',root/'app/src/main/res','-o',build/'resources.zip'])
-run([tools/('aapt2'+suffix),'link','-o',build/'base.apk','-I',android,'--manifest',root/'app/src/main/AndroidManifest.xml','--min-sdk-version','29','--target-sdk-version','35','--version-code','30300','--version-name','1.3','-A',root/'app/src/main/assets',build/'resources.zip'])
+run([tools/('aapt2'+suffix),'link','-o',build/'base.apk','-I',android,'--manifest',root/'app/src/main/AndroidManifest.xml','--min-sdk-version','29','--target-sdk-version','35','--version-code','30400','--version-name','1.4','-A',root/'app/src/main/assets',build/'resources.zip'])
 classes=build/'classes'
 assert classes.resolve().is_relative_to((root/'app/build').resolve())
 if classes.exists():shutil.rmtree(classes)
@@ -33,7 +33,7 @@ shutil.copy2(build/'base.apk',build/'unsigned.apk')
 with zipfile.ZipFile(build/'unsigned.apk','a',zipfile.ZIP_DEFLATED) as z:
  for f in build.glob('classes*.dex'):z.write(f,f.name)
 run([tools/('zipalign'+suffix),'-f','4',build/'unsigned.apk',build/'aligned.apk'])
-apk=build/'Ahna-1.3-Android.apk'
+apk=build/'Ahna-1.4-Android.apk'
 run([java,'-jar',tools/'lib/apksigner.jar','sign','--ks',a.keystore,'--ks-key-alias',a.alias,'--ks-pass','env:AHNA_KEY_PASSWORD','--key-pass','env:AHNA_KEY_PASSWORD','--out',apk,build/'aligned.apk'])
 run([java,'-jar',tools/'lib/apksigner.jar','verify','--verbose','--print-certs',apk])
 run([tools/('zipalign'+suffix),'-c','4',apk])

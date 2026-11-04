@@ -413,8 +413,49 @@ internal sealed class OutboundDevices : TransferServer.IExternalDevices, IDispos
 		return "상대 기기에 연결하지 못했습니다. 서버 주소와 상대 기기의 아나를 확인하세요.";
 	}
 
+	// 같은 네트워크 직접 전송(DirectChannel.cs): 상대가 상태 확인 응답으로 알려 준 연결 정보와, 실패하면 잠시 쉬는 시각.
+	private sealed record DirectState(DirectInfo? Info, DateTimeOffset FailedUntil);
+
+	private readonly System.Collections.Concurrent.ConcurrentDictionary<string, DirectState> directs = new();
+
+	private void UpdateDirect(Profile p, JsonElement root)
+	{
+		DirectInfo? info = DirectInfo.Parse(root);
+		directs.AddOrUpdate(Id(p), new DirectState(info, DateTimeOffset.MinValue), (string _, DirectState old) => old with { Info = info });
+	}
+
+	private void DirectFailed(Profile p)
+	{
+		directs.AddOrUpdate(Id(p), new DirectState(null, DateTimeOffset.UtcNow.AddSeconds(60)), (string _, DirectState old) => old with { FailedUntil = DateTimeOffset.UtcNow.AddSeconds(60) });
+	}
+
+	/// 파일·받기 요청이고, 상대가 직접 연결 정보를 줬고, 최근에 실패하지 않았으면 그 정보.
+	private DirectInfo? DirectFor(Profile p, HttpMethod method, string path)
+	{
+		string route = path.Split('?')[0];
+		bool eligible = (method == HttpMethod.Post && (route == "/api/upload" || route.StartsWith("/api/received/", StringComparison.Ordinal))) || (method == HttpMethod.Get && route.StartsWith("/api/download/", StringComparison.Ordinal));
+		if (!eligible || !directs.TryGetValue(Id(p), out DirectState? state) || state.Info == null || state.FailedUntil > DateTimeOffset.UtcNow)
+		{
+			return null;
+		}
+		return state.Info;
+	}
+
 	private async Task<HttpResponseMessage> Request(Profile p, HttpMethod method, string path, HttpContent? content = null, CancellationToken? token = null, Dictionary<string, string>? headers = null)
 	{
+		CancellationToken cancel = token ?? stop.Token;
+		if (headers == null && DirectFor(p, method, path) is DirectInfo info)
+		{
+			try
+			{
+				return Check(p, await DirectClient.SendAsync(info, method, path, content, cancel));
+			}
+			catch (DirectClient.Unavailable)
+			{
+				// 같은 네트워크가 아니거나 막혀 있음: 1분 동안은 서버로 보냅니다.
+				DirectFailed(p);
+			}
+		}
 		using HttpRequestMessage request = new HttpRequestMessage(method, Endpoint(p.Address, path))
 		{
 			Content = content
@@ -434,7 +475,6 @@ internal sealed class OutboundDevices : TransferServer.IExternalDevices, IDispos
 		{
 			request.Headers.Add("X-Ahna-Computer", p.ComputerId);
 		}
-		CancellationToken cancel = token ?? stop.Token;
 		HttpResponseMessage response;
 		try
 		{
@@ -448,6 +488,11 @@ internal sealed class OutboundDevices : TransferServer.IExternalDevices, IDispos
 		{
 			throw new IOException("상대 기기의 응답이 없습니다. 잠시 후 다시 시도하세요.");
 		}
+		return Check(p, response);
+	}
+
+	private static HttpResponseMessage Check(Profile p, HttpResponseMessage response)
+	{
 		if (!response.IsSuccessStatusCode)
 		{
 			HttpStatusCode statusCode = response.StatusCode;
@@ -472,7 +517,7 @@ internal sealed class OutboundDevices : TransferServer.IExternalDevices, IDispos
 	// 상태 확인 때 이 PC의 수신 ID도 알려 줍니다. 예전에 연결한 상대도 다시 연결하지 않고 같은 기기로 알아봅니다.
 	private string StatePath()
 	{
-		return "/api/state?receiving=true&computerID=" + Uri.EscapeDataString(server.ComputerId);
+		return "/api/state?receiving=true&direct=1&computerID=" + Uri.EscapeDataString(server.ComputerId);
 	}
 
 	private async Task<JsonDocument> Json(HttpResponseMessage response)
@@ -741,7 +786,27 @@ internal sealed class OutboundDevices : TransferServer.IExternalDevices, IDispos
 				}, cancel.Token);
 				content.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
 				string uploadPath = "/api/upload?batch=" + batch + "&path=" + Uri.EscapeDataString(name);
-				if (size > ChunkSize && p.Address.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+				bool direct = false;
+				if (size > ChunkSize && DirectFor(p, HttpMethod.Post, uploadPath) is DirectInfo info)
+				{
+					// 같은 네트워크면 나눌 필요 없이 한 번에 바로 보냅니다. 안 되면 아래에서 서버로 나눠 보냅니다.
+					try
+					{
+						using (Check(p, await DirectClient.SendAsync(info, HttpMethod.Post, uploadPath, content, cancel.Token)))
+						{
+						}
+						direct = true;
+					}
+					catch (DirectClient.Unavailable)
+					{
+						DirectFailed(p);
+						progress = new Progress(deviceId, p.Name, index, files.Length, name, 0L, size);
+					}
+				}
+				if (direct)
+				{
+				}
+				else if (size > ChunkSize && p.Address.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
 				{
 					await UploadChunked(p, uploadPath, file, size, (long sent) =>
 					{
@@ -882,6 +947,7 @@ internal sealed class OutboundDevices : TransferServer.IExternalDevices, IDispos
 		using JsonDocument state = await Json(response);
 		SetLive(p, null);
 		JsonElement root = state.RootElement;
+		UpdateDirect(p, root);
 		string session = root.TryGetProperty("id", out JsonElement sessionValue) ? (sessionValue.GetString() ?? "") : "";
 		if (root.TryGetProperty("items", out JsonElement items) && items.ValueKind == JsonValueKind.Array)
 		{

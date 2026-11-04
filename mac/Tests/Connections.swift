@@ -158,7 +158,7 @@ final class MockComputers: URLProtocol, @unchecked Sendable {
         defer { try? FileManager.default.removeItem(at: receiveRoot) }
         try ReceiveFolder.choose(receiveA)
         let receiving = AhnaConnection(receive: true, profile: saved[0], configuration: config)
-        receiving.state = ServerState(id: "phone-pc2", name: "Test Mac", hostName: "pc2", computerID: nil, owner: false, items: [], clipboard: nil)
+        receiving.state = ServerState(id: "phone-pc2", name: "Test Mac", hostName: "pc2", computerID: nil, owner: false, items: [], clipboard: nil, direct: nil)
         receiving.savePhotos = false
         let receivedOne = try await receiving.saveToFiles(InboxFile(id: "receive-a", name: "received.txt", bytes: 2))
         check(receivedOne.deletingLastPathComponent().path == receiveA.path, "URLSession download lands in chosen folder A")

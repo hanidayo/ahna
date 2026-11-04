@@ -13,6 +13,7 @@
 <key>CFBundleVersion</key><string>$(CURRENT_PROJECT_VERSION)</string>
 <key>NSAppTransportSecurity</key><dict><key>NSAllowsLocalNetworking</key><true/></dict>
 <key>NSBluetoothAlwaysUsageDescription</key><string>근처에 있는 아나 기기를 찾아 바로 보낼 때 Bluetooth를 사용합니다.</string>
+<key>NSLocalNetworkUsageDescription</key><string>같은 네트워크의 기기로 서버를 거치지 않고 바로 보냅니다.</string>
 <key>NSExtension</key><dict>
 <key>NSExtensionPointIdentifier</key><string>com.apple.share-services</string>
 <key>NSExtensionPrincipalClass</key><string>$(PRODUCT_MODULE_NAME).ShareViewController</string>

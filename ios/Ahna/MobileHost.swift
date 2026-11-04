@@ -72,6 +72,8 @@ final class MobileHTTPHost: @unchecked Sendable {
     private var ticking = false
     /// 티켓 상태가 바뀔 때마다 모든 티켓의 요약
     var ticketsChanged: (@Sendable ([GuestTicketSnapshot]) -> Void)?
+    /// 같은 네트워크 직접 받기(MobileDirect.swift): 세션 토큰 → 연결용 키·포트·주소. 없으면 알려 주지 않음
+    var directOffer: (@Sendable (String) -> [String: Any]?)?
     /// QR로 받기 요청이 들어왔을 때(주인의 확인 필요)
     var guestRequested: (@Sendable (GuestRequestInfo) -> Void)?
     /// 게스트가 올린 파일을 저장했을 때(받은 파일 기록·사진 저장용). 없으면 received를 씁니다.
@@ -466,7 +468,9 @@ final class MobileHTTPHost: @unchecked Sendable {
             prune()
             let files: [[String: Any]] = items.values.filter { $0.target == peer.id }.map { ["id": $0.id, "name": $0.name, "bytes": (try? $0.url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0, "target": $0.target] }
             let texts: [[String: Any]] = clips.values.filter { $0.target == peer.id }.map { ["id": $0.id, "sender": $0.sender, "bytes": $0.text.utf8.count, "created": ISO8601DateFormatter().string(from: $0.created)] }
-            r.respond(200, json: ["id": peer.id, "name": peers[r.token]?.name ?? peer.name, "hostName": name, "platform": "iOS", "computerID": identity, "owner": false, "items": files, "clipboard": texts, "devices": [], "history": [], "maxFile": Self.maxFile, "maxClipboardBytes": 65536]); changed?(); return
+            var state: [String: Any] = ["id": peer.id, "name": peers[r.token]?.name ?? peer.name, "hostName": name, "platform": "iOS", "computerID": identity, "owner": false, "items": files, "clipboard": texts, "devices": [], "history": [], "maxFile": Self.maxFile, "maxClipboardBytes": 65536]
+            if r.query["direct"] == "1", let offer = directOffer?(r.token) { state["direct"] = offer }
+            r.respond(200, json: state); changed?(); return
         }
         if r.path == "/api/logout", r.method == "POST" { peers.removeValue(forKey: r.token); try persist(); r.respond(200); return }
         if r.path == "/api/upload", r.method == "POST" {
@@ -603,6 +607,7 @@ private final class MobileHTTPRequest {
     @Published var nasAddress = Brand.ahna ? Brand.server : UserDefaults.standard.string(forKey: "mobileNasURL") ?? ""
     @Published var nasKey = ""
     private(set) var engine: MobileHTTPHost?
+    private var direct: MobileDirectHost?
     private var relay: MobileNASBridge?
     private var foreground = true
     var pin: String { engine?.pin ?? "" }
@@ -618,6 +623,8 @@ private final class MobileHTTPRequest {
     }
     init() {
         do { let host = try MobileHTTPHost(); host.name = DeviceIdentity.savedName; engine = host
+            let directHost = MobileDirectHost(localPort: host.port); direct = directHost
+            host.directOffer = { token in directHost.offer(token: token) }
             host.received = { url, source in Task { @MainActor in
                 ReceiveHistory.shared.record(id: url.path, url: url, source: source)
                 // 사진·동영상은 사진 앱에만 저장(설정이 켜져 있으면)
@@ -665,8 +672,8 @@ private final class MobileHTTPRequest {
     }
     func cancelTicket(_ token: String, state: String = "expired") { engine?.cancelTicket(token, state: state) }
     func answerGuest(_ token: String, accept: Bool) { engine?.answerGuest(token, accept: accept) }
-    func start() { foreground = true; engine?.start(); connectNAS(); refresh() }
-    func stop() { foreground = false; relay?.stop(); relay = nil; engine?.stop(); active = false; remoteStatus = "앱을 다시 열면 서버에 연결됩니다." }
+    func start() { foreground = true; engine?.start(); direct?.start(); connectNAS(); refresh() }
+    func stop() { foreground = false; relay?.stop(); relay = nil; engine?.stop(); direct?.stop(); active = false; remoteStatus = "앱을 다시 열면 서버에 연결됩니다." }
     func refresh() { engine?.snapshot { [weak self] running, peers, files, clips in Task { @MainActor in
         guard let self else { return }; self.active = running; self.peers = peers; self.files = files; self.clips = clips; self.status = running ? "연결을 받을 수 있습니다." : "서버 수신 준비 중…"
         for clip in clips { TransferLog.shared.record(sent: false, name: "글자", device: clip.0, bytes: Int64(clip.1.utf8.count), preview: TransferLog.preview(clip.1), key: "hostclip:" + clip.3) }

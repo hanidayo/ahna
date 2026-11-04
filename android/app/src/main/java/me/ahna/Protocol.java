@@ -34,6 +34,8 @@ public final class Protocol implements Closeable {
     private final Set<Socket> sockets = ConcurrentHashMap.newKeySet();
     private final Semaphore uploads = new Semaphore(2);
     private ServerSocket server;
+    /** 같은 네트워크 직접 받기(DirectLink.java). */
+    private DirectLink.Host direct;
     /** 이 기기가 상대를 추가하는 동안 미리 만들어 둔 상대용 연결: 유효하지만 목록·저장에는 아직 넣지 않습니다. */
     private final Set<String> reserved = ConcurrentHashMap.newKeySet();
     private long attemptWindow;
@@ -60,6 +62,7 @@ public final class Protocol implements Closeable {
         ServerSocket active=server;
         Thread thread=new Thread(()->{while(!active.isClosed())try { Socket s=active.accept();s.setSoTimeout(60000);sockets.add(s);try{workers.execute(()->handle(s));}catch(RejectedExecutionException e){sockets.remove(s);s.close();}}catch(IOException ignored){}},"아나 receiver");
         thread.setDaemon(true);thread.start();
+        direct=new DirectLink.Host(port);direct.start();
     }
     public java.net.InetAddress loopbackAddress(){return server.getInetAddress();}
     public int port(){return server==null?0:server.getLocalPort();}
@@ -172,7 +175,9 @@ public final class Protocol implements Closeable {
                 String reported=peerIdentity(query.get("computerID"));if(!reported.isEmpty()&&!reported.equals(peer.computerID)){peer.computerID=reported;persist();}
                 if(!query.containsKey("receiving")||query.get("receiving").equals("true"))peer.receiver=peer.seen;
                 prune();JSONArray files=new JSONArray();for(Item item:items.values())if(item.target.equals(peer.id))files.put(new JSONObject().put("id",item.id).put("name",item.name).put("bytes",item.file.length()).put("target",item.target));
-                json(out,200,new JSONObject().put("id",peer.id).put("name",peer.name).put("hostName",name).put("platform","Android").put("computerID",identity).put("owner",false).put("items",files).put("devices",new JSONArray()).put("history",new JSONArray()).put("clipboard",clipboard(peer.id)).put("maxFile",MAX).put("maxClipboardBytes",65536),"");listener.changed();return;
+                JSONObject state=new JSONObject().put("id",peer.id).put("name",peer.name).put("hostName",name).put("platform","Android").put("computerID",identity).put("owner",false).put("items",files).put("devices",new JSONArray()).put("history",new JSONArray()).put("clipboard",clipboard(peer.id)).put("maxFile",MAX).put("maxClipboardBytes",65536);
+                DirectLink.Host d=direct;if("1".equals(query.get("direct"))&&d!=null){JSONObject offer=d.offer(token);if(offer!=null)state.put("direct",offer);}
+                json(out,200,state,"");listener.changed();return;
             }
             if(path.equals("/api/logout")&&method.equals("POST")){peers.remove(token);persist();reply(out,200,new byte[0],"");return;}
             if(path.equals("/api/upload")&&method.equals("POST")) {
@@ -496,5 +501,5 @@ public final class Protocol implements Closeable {
         }
         reply(out, 404, new byte[0], "");
     }
-    @Override public synchronized void close() throws IOException {if(ticker!=null)ticker.shutdownNow();if(server!=null){server.close();server=null;}for(Socket socket:sockets)try{socket.close();}catch(IOException ignored){}workers.shutdownNow();try{persist();}catch(Exception ignored){}}
+    @Override public synchronized void close() throws IOException {if(ticker!=null)ticker.shutdownNow();if(direct!=null){direct.close();direct=null;}if(server!=null){server.close();server=null;}for(Socket socket:sockets)try{socket.close();}catch(IOException ignored){}workers.shutdownNow();try{persist();}catch(Exception ignored){}}
 }

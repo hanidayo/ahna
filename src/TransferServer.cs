@@ -27,6 +27,8 @@ public sealed class TransferServer : IAsyncDisposable
     WebApplication? app;
     int disposed;
     Ahna.Remote.RemoteBridge? bridge;
+    // 같은 네트워크면 서버를 거치지 않고 바로 받기 (DirectChannel.cs)
+    DirectHost? direct;
     public string RemoteStatus => bridge?.Status ?? "서버 연결 꺼짐";
     public Preferences Settings { get; private set; }
     // 이 컴퓨터 주인 화면의 비밀값. 업데이트로 다시 시작해도 열려 있던 아나 창이 그대로 쓰도록 저장해 둡니다.
@@ -335,7 +337,9 @@ public sealed class TransferServer : IAsyncDisposable
             var items = shares.Values.Where(x => (d.Owner || x.Target == d.Id) && now - x.Created < TimeSpan.FromHours(24)).OrderByDescending(x => x.Created).Select(x => new { x.Id, x.Name, x.Bytes, x.Target }).ToArray();
             HistoryItem[] recent; lock (gate) recent = history.Where(h => d.Owner || h.Session == d.Id).Take(20).ToArray();
             var clipboard = ClipboardInbox(d.Owner ? "windows" : d.Id).Select(x => new { x.Id, x.Sender, x.Bytes, x.Created });
-            return Results.Json(new { id = d.Id, name = d.Name, version = AppVersion, hostName = Environment.MachineName, platform = OperatingSystem.IsMacOS()?"Mac":"Windows", owner = d.Owner, pin = d.Owner ? Pin : null, urls = d.Owner ? Addresses.Concat(Settings.RemoteEnabled?new[]{Settings.RemoteUrl}:[]).Distinct(StringComparer.OrdinalIgnoreCase).ToArray() : [], remoteStatus = d.Owner ? RemoteStatus : null, savePath = d.Owner ? Settings.SavePath : null, devices, items, clipboard, maxClipboardBytes = MaxClipboardBytes, history = recent, maxFile = MaxFile, outbound = d.Owner ? ExternalDevices?.Snapshot() : null, peers, announcements = d.Owner ? Announcements() : null });
+            // 같은 네트워크 직접 전송: 앱(native) 세션이 direct=1로 물으면 연결용 키·포트·주소를 알려 줍니다.
+            var directOffer = d.Native && !d.Owner && c.Request.Query["direct"].ToString() == "1" && c.Request.Cookies.TryGetValue("ahna", out var sessionToken) ? direct?.Offer(sessionToken ?? "") : null;
+            return Results.Json(new { id = d.Id, name = d.Name, version = AppVersion, hostName = Environment.MachineName, platform = OperatingSystem.IsMacOS()?"Mac":"Windows", owner = d.Owner, pin = d.Owner ? Pin : null, urls = d.Owner ? Addresses.Concat(Settings.RemoteEnabled?new[]{Settings.RemoteUrl}:[]).Distinct(StringComparer.OrdinalIgnoreCase).ToArray() : [], remoteStatus = d.Owner ? RemoteStatus : null, savePath = d.Owner ? Settings.SavePath : null, devices, items, clipboard, maxClipboardBytes = MaxClipboardBytes, history = recent, maxFile = MaxFile, outbound = d.Owner ? ExternalDevices?.Snapshot() : null, peers, announcements = d.Owner ? Announcements() : null, direct = directOffer });
         });
         app.MapPost("/api/logout", (HttpContext c) => { if (c.Request.Cookies.TryGetValue("ahna", out var t)) sessions.TryRemove(t, out _);SaveNativeSessions(); c.Response.Cookies.Delete("ahna"); return Results.Ok(); });
         app.MapPost("/api/upload", (Delegate)Upload);
@@ -634,6 +638,7 @@ public sealed class TransferServer : IAsyncDisposable
         MapGuest(app);
         app.UseDefaultFiles(); app.UseStaticFiles();
         await app.StartAsync();
+        try { direct = new DirectHost(new Uri(LocalUrl)); direct.Start(); } catch (Exception) { direct = null; }
         bridge=new(new Uri(LocalUrl),Path.Combine(data,"remote-parts"),()=>Settings.RemoteEnabled?new(Settings.RemoteUrl,RemoteKey.Unprotect(Settings.RemoteKeyProtected)):null,computerId:computerId,pairingPin:()=>Pin);
         bridge.DeviceName=()=>GuestOwnerName; bridge.Platform=OperatingSystem.IsMacOS()?"Mac":"Windows";
         bridge.Connected+=()=>{_=RefreshAnnouncements();};
@@ -945,7 +950,7 @@ public sealed class TransferServer : IAsyncDisposable
         return text.Length == 32 && text.All(char.IsAsciiHexDigit) ? text.ToLowerInvariant() : "";
     }
     public (string Id, string Name)[] Nearby() => sessions.Values.Where(d => IsReceiving(d,DateTimeOffset.UtcNow)).DistinctBy(d => d.Id).Select(d => (d.Id, d.Name)).ToArray();
-    public async ValueTask DisposeAsync() { if(Interlocked.Exchange(ref disposed,1)!=0)return;foreach(var t in tickets.Values)EndTicket(t,"expired");SaveNativeSessions();if(bridge is not null){await bridge.DisposeAsync();bridge=null;}if (app is not null) { var current = app; app = null; await current.StopAsync(); await current.DisposeAsync(); } }
+    public async ValueTask DisposeAsync() { if(Interlocked.Exchange(ref disposed,1)!=0)return;foreach(var t in tickets.Values)EndTicket(t,"expired");SaveNativeSessions();if(bridge is not null){await bridge.DisposeAsync();bridge=null;}if(direct is not null){await direct.DisposeAsync();direct=null;}if (app is not null) { var current = app; app = null; await current.StopAsync(); await current.DisposeAsync(); } }
     // ---- Guest tickets (1.2) ----------------------------------------------------------------------------------
     // A ticket is a one-time permission for a device that is not paired: "send" gives it the chosen files,
     // "receive" lets it upload after the owner accepts. Tickets live in memory, expire after 10 minutes and are

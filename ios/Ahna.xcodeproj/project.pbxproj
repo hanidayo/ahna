@@ -10,9 +10,12 @@
 "000000000000000000000090" = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Ahna/GuestPage.swift"; sourceTree = "<group>"; }; "000000000000000000000091" = {isa=PBXBuildFile; fileRef="000000000000000000000090";};
 "000000000000000000000092" = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Ahna/Nearby.swift"; sourceTree = "<group>"; }; "000000000000000000000093" = {isa=PBXBuildFile; fileRef="000000000000000000000092";};
 "000000000000000000000094" = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Ahna/NearbyViews.swift"; sourceTree = "<group>"; }; "000000000000000000000095" = {isa=PBXBuildFile; fileRef="000000000000000000000094";};
+"00000000000000000000009C" = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Shared/DirectLink.swift"; sourceTree = "<group>"; }; "00000000000000000000009D" = {isa=PBXBuildFile; fileRef="00000000000000000000009C";}; "00000000000000000000009E" = {isa=PBXBuildFile; fileRef="00000000000000000000009C";};
 "000000000000000000000070" = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Shared/ReceiveHistory.swift"; sourceTree = "<group>"; }; "000000000000000000000071" = {isa=PBXBuildFile; fileRef="000000000000000000000070";}; "000000000000000000000072" = {isa=PBXBuildFile; fileRef="000000000000000000000070";};
     "000000000000000000000060" = { "isa" = "PBXFileReference"; "lastKnownFileType" = "sourcecode.swift"; "path" = "Ahna/MobileHost.swift"; "sourceTree" = "<group>"; };
     "000000000000000000000061" = { "isa" = "PBXBuildFile"; "fileRef" = "000000000000000000000060"; };
+    "0000000000000000000000A1" = { "isa" = "PBXFileReference"; "lastKnownFileType" = "sourcecode.swift"; "path" = "Ahna/MobileDirect.swift"; "sourceTree" = "<group>"; };
+    "0000000000000000000000A2" = { "isa" = "PBXBuildFile"; "fileRef" = "0000000000000000000000A1"; };
     "000000000000000000000062" = { "isa" = "PBXFileReference"; "lastKnownFileType" = "sourcecode.swift"; "path" = "Ahna/MobileNASBridge.swift"; "sourceTree" = "<group>"; };
     "000000000000000000000063" = { "isa" = "PBXBuildFile"; "fileRef" = "000000000000000000000062"; };
 
@@ -170,6 +173,7 @@
       "isa" = "PBXSourcesBuildPhase";
       "buildActionMask" = "2147483647";
       "files" = ("000000000000000000000071",
+        "00000000000000000000009D",
         "000000000000000000000081",
         "000000000000000000000097",
         "00000000000000000000009A",
@@ -179,6 +183,7 @@
         "000000000000000000000095",
         "000000000000000000000063",
         "000000000000000000000061",
+        "0000000000000000000000A2",
         "00000000000000000000000E",
         "00000000000000000000000F",
         "000000000000000000000010",
@@ -204,6 +209,7 @@
       "isa" = "PBXSourcesBuildPhase";
       "buildActionMask" = "2147483647";
       "files" = ("000000000000000000000072",
+        "00000000000000000000009E",
         "000000000000000000000082",
         "000000000000000000000098",
         "00000000000000000000009B",
@@ -277,8 +283,8 @@
         "SUPPORTED_PLATFORMS" = "iphoneos iphonesimulator";
         "CODE_SIGN_STYLE" = "Automatic";
         "DEVELOPMENT_TEAM" = "";
-        "MARKETING_VERSION" = "1.3";
-        "CURRENT_PROJECT_VERSION" = "30300";
+        "MARKETING_VERSION" = "1.4";
+        "CURRENT_PROJECT_VERSION" = "30400";
         "CODE_SIGN_ENTITLEMENTS" = "Shared/Ahna.entitlements";
         "SWIFT_OPTIMIZATION_LEVEL" = "-Onone";
         "SWIFT_ACTIVE_COMPILATION_CONDITIONS" = "DEBUG $(inherited)";
@@ -298,8 +304,8 @@
         "SUPPORTED_PLATFORMS" = "iphoneos iphonesimulator";
         "CODE_SIGN_STYLE" = "Automatic";
         "DEVELOPMENT_TEAM" = "";
-        "MARKETING_VERSION" = "1.3";
-        "CURRENT_PROJECT_VERSION" = "30300";
+        "MARKETING_VERSION" = "1.4";
+        "CURRENT_PROJECT_VERSION" = "30400";
         "CODE_SIGN_ENTITLEMENTS" = "Shared/Ahna.entitlements";
       };
       "name" = "Release";

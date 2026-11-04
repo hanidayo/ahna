@@ -5,12 +5,12 @@
     <OutputType>Exe</OutputType>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <Version>1.3</Version>
+    <Version>1.4</Version>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="Program.cs;RemoteKey.cs" />
-    <Compile Include="../../src/Models.cs;../../src/TransferServer.cs" Link="Core/%(Filename)%(Extension)" />
+    <Compile Include="../../src/Models.cs;../../src/TransferServer.cs;../../src/DirectChannel.cs" Link="Core/%(Filename)%(Extension)" />
     <Compile Include="../../server/Common/*.cs" Link="Remote/%(Filename)%(Extension)" />
     <Content Include="../../src/wwwroot/**" Link="wwwroot/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <!-- QR로 연 웹 페이지(앱 없는 상대) — Windows와 같은 파일 -->

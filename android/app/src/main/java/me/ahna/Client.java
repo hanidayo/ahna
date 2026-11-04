@@ -14,6 +14,11 @@ public final class Client {
     public volatile boolean revoked;
     public static final String REVOKED = "상대 기기에서 연결을 해제했습니다 · 다시 추가하세요";
     public Client(JSONObject profile){this.profile=profile;}
+    /** 같은 네트워크 직접 전송(DirectLink.java)이 실패하면 1분 동안은 서버로 보냅니다. */
+    private volatile long directFailedUntil;
+    private JSONObject direct(){JSONObject s=state;if(s==null||System.currentTimeMillis()<directFailedUntil)return null;JSONObject d=s.optJSONObject("direct");return DirectLink.usable(d)?d:null;}
+    private void directFailed(){directFailedUntil=System.currentTimeMillis()+60000;}
+    private static IOException directError(int status,boolean token){return new IOException(status==401&&token?REVOKED:status==401?"연결 코드로 다시 인증해 주세요.":"요청 실패 ("+status+") · 상대 앱과 연결을 확인하세요.");}
     public static URL endpoint(String address,String path)throws Exception {
         URI base=new URI(address.trim());String host=base.getHost();if(host==null||base.getUserInfo()!=null||base.getQuery()!=null||base.getFragment()!=null||!(base.getPath().isEmpty()||base.getPath().equals("/")))throw new IOException("기기의 주소만 입력하세요.");
         boolean local=host.equals("localhost")||host.endsWith(".local")||host.matches("10\\.(\\d{1,3}\\.){2}\\d{1,3}")||host.matches("192\\.168\\.\\d{1,3}\\.\\d{1,3}")||host.matches("172\\.(1[6-9]|2[0-9]|3[01])\\.\\d{1,3}\\.\\d{1,3}");
@@ -41,7 +46,7 @@ public final class Client {
      */
     public boolean pair(String pin,String name,String own,JSONObject reverse)throws Exception {JSONObject body=new JSONObject().put("pin",pin.trim()).put("name",name).put("native",true).put("canReceive",true);String mine=Protocol.peerIdentity(own);if(!mine.isEmpty())body.put("computerID",mine);if(reverse!=null)body.put("reverse",reverse);JSONObject paired=request("/api/pair",body);String identity=paired.optString("computerID","");if(identity.matches("[a-fA-F0-9]{32}"))profile.put("computerID",identity);boolean accepted=reverse!=null&&paired.optBoolean("reverse",false);refresh(name,own);return accepted;}
     public void refresh(String name)throws Exception {refresh(name,null);}
-    public void refresh(String name,String own)throws Exception {String mine=Protocol.peerIdentity(own);state=request("/api/state?receiving=true&deviceName="+escape(name)+(mine.isEmpty()?"":"&computerID="+mine),null);revoked=false;profile.put("hostName",state.optString("hostName","기기"));}
+    public void refresh(String name,String own)throws Exception {String mine=Protocol.peerIdentity(own);state=request("/api/state?receiving=true&direct=1&deviceName="+escape(name)+(mine.isEmpty()?"":"&computerID="+mine),null);revoked=false;profile.put("hostName",state.optString("hostName","기기"));}
     /** 큰 파일 나눠 올리기: Cloudflare 같은 프록시는 요청 하나를 100MB로 제한합니다. 첫 조각에 X-Ahna-Total을 붙이면 서버가 받는 기기로는 한 파일처럼 이어 보냅니다. */
     static final long CHUNK=50L*1024*1024;
     private void sendChunked(File file,String path)throws Exception {
@@ -64,9 +69,31 @@ public final class Client {
             }
         }
     }
-    public void send(File file,String name)throws Exception {String path="/api/upload?batch="+UUID.randomUUID()+"&path="+escape(Protocol.safeName(name));if(file.length()>CHUNK&&file.length()<=Protocol.MAX){sendChunked(file,path);return;}HttpURLConnection c=connection(path);try{if(file.length()>Protocol.MAX)throw new IOException("최대 4 GiB입니다.");c.setRequestMethod("POST");c.setDoOutput(true);c.setFixedLengthStreamingMode(file.length());c.setRequestProperty("Content-Type","application/octet-stream");try(InputStream in=new FileInputStream(file);OutputStream out=c.getOutputStream()){Protocol.copy(in,out,file.length());}check(c);}finally{c.disconnect();}}
+    public void send(File file,String name)throws Exception {String path="/api/upload?batch="+UUID.randomUUID()+"&path="+escape(Protocol.safeName(name));
+        // 같은 네트워크면 서버를 거치지 않고 바로 보냅니다(안 되면 아래에서 서버로).
+        JSONObject d=direct();
+        if(d!=null&&file.length()<=Protocol.MAX){
+            try(DirectLink.Response r=DirectLink.request(d,"POST",path,file.length(),"application/octet-stream",out->{try(InputStream in=new FileInputStream(file)){Protocol.copy(in,out,file.length());}})){
+                if(r.status==401&&profile.has("token"))revoked=true;
+                if(r.status<200||r.status>=300)throw directError(r.status,profile.has("token"));
+                return;
+            }catch(DirectLink.Unavailable e){directFailed();}
+        }
+if(file.length()>CHUNK&&file.length()<=Protocol.MAX){sendChunked(file,path);return;}HttpURLConnection c=connection(path);try{if(file.length()>Protocol.MAX)throw new IOException("최대 4 GiB입니다.");c.setRequestMethod("POST");c.setDoOutput(true);c.setFixedLengthStreamingMode(file.length());c.setRequestProperty("Content-Type","application/octet-stream");try(InputStream in=new FileInputStream(file);OutputStream out=c.getOutputStream()){Protocol.copy(in,out,file.length());}check(c);}finally{c.disconnect();}}
     public void sendClipboard(String text)throws Exception {Protocol.validateText(text);byte[] bytes=text.getBytes(StandardCharsets.UTF_8);HttpURLConnection c=connection("/api/upload?batch="+UUID.randomUUID()+"&kind=clipboard");try{c.setRequestMethod("POST");c.setDoOutput(true);c.setFixedLengthStreamingMode(bytes.length);try(OutputStream out=c.getOutputStream()){out.write(bytes);}check(c);}finally{c.disconnect();}}
     public String clipboard(String id)throws Exception {if(!id.matches("[a-fA-F0-9]{32}"))throw new IOException("잘못된 글자 ID입니다.");HttpURLConnection c=connection("/api/download/"+id+"?kind=clipboard");try{check(c);try(InputStream in=c.getInputStream()){ByteArrayOutputStream b=new ByteArrayOutputStream();byte[] buffer=new byte[4096];int n;while((n=in.read(buffer))>=0){if(b.size()+n>65536)throw new IOException("글자가 너무 큽니다.");b.write(buffer,0,n);}String text=Protocol.strictUTF8(b.toByteArray());Protocol.validateText(text);return text;}}finally{c.disconnect();}}
-    public void download(JSONObject item,File destination)throws Exception {String id=item.getString("id");long expected=item.getLong("bytes");if(!id.matches("[a-fA-F0-9]{32}")||expected<0||expected>Protocol.MAX)throw new IOException("잘못된 파일 정보입니다.");HttpURLConnection c=connection("/api/download/"+id);try{check(c);if(c.getContentLengthLong()!=expected)throw new IOException("파일 크기가 다릅니다.");try(InputStream in=c.getInputStream();OutputStream out=new FileOutputStream(destination)){Protocol.copy(in,out,expected);if(in.read()!=-1)throw new IOException("파일 크기가 다릅니다.");}}catch(Exception e){destination.delete();throw e;}finally{c.disconnect();}}
+    public void download(JSONObject item,File destination)throws Exception {String id=item.getString("id");long expected=item.getLong("bytes");if(!id.matches("[a-fA-F0-9]{32}")||expected<0||expected>Protocol.MAX)throw new IOException("잘못된 파일 정보입니다.");
+        JSONObject d=direct();
+        if(d!=null){
+            try(DirectLink.Response r=DirectLink.request(d,"GET","/api/download/"+id,0,null,null)){
+                if(r.status==401&&profile.has("token"))revoked=true;
+                if(r.status<200||r.status>=300)throw directError(r.status,profile.has("token"));
+                if(r.length!=expected)throw new IOException("파일 크기가 다릅니다.");
+                try(OutputStream out=new FileOutputStream(destination)){Protocol.copy(r.body,out,expected);}
+                catch(IOException e){destination.delete();throw new DirectLink.Unavailable("직접 받기가 끊겼습니다.",e);}
+                return;
+            }catch(DirectLink.Unavailable e){directFailed();}
+        }
+HttpURLConnection c=connection("/api/download/"+id);try{check(c);if(c.getContentLengthLong()!=expected)throw new IOException("파일 크기가 다릅니다.");try(InputStream in=c.getInputStream();OutputStream out=new FileOutputStream(destination)){Protocol.copy(in,out,expected);if(in.read()!=-1)throw new IOException("파일 크기가 다릅니다.");}}catch(Exception e){destination.delete();throw e;}finally{c.disconnect();}}
     public void receipt(String id)throws Exception {request("/api/received/"+id,new JSONObject().put("destination","files"));}
 }

@@ -29,6 +29,8 @@ struct ServerState: Decodable {
     let owner: Bool
     let items: [InboxFile]
     let clipboard: [InboxClipboard]?
+    /// 같은 네트워크 직접 전송(DirectLink.swift): 상대가 알려 준 연결 정보. 예전 상대·Android는 없음
+    let direct: DirectInfo?
 }
 struct PendingFile: Identifiable {
     let id = UUID()
@@ -452,6 +454,16 @@ enum ComputerVault {
     private static var sharedReceivedFiles: ReceivedFileStore?
     private var receivedFiles: ReceivedFileStore? { Self.sharedReceivedFiles }
     private var pausedAutomaticReceives = Set<String>()
+    /// 같은 네트워크 직접 전송이 실패하면 1분 동안은 서버로 보냅니다.
+    private var directFailedUntil = Date.distantPast
+    private var directInfo: DirectInfo? {
+        guard Date() >= directFailedUntil, let info = state?.direct, info.usable else { return nil }
+        return info
+    }
+    private func directResponse(_ status: Int, path: String) throws -> HTTPURLResponse {
+        guard let response = HTTPURLResponse(url: try endpoint(path), statusCode: status, httpVersion: "HTTP/1.1", headerFields: [:]) else { throw AhnaError.message("응답을 읽을 수 없습니다.") }
+        return response
+    }
     init(receive: Bool, profile: ComputerProfile? = nil, configuration: URLSessionConfiguration = .ephemeral) {
         self.receive = receive
         id = profile?.id ?? UUID(); computerID = profile?.computerID
@@ -566,7 +578,7 @@ enum ComputerVault {
     func refresh(updatingName: Bool = false) async throws {
         var stateRequest = try request("/api/state")
         var components = URLComponents(url: stateRequest.url!, resolvingAgainstBaseURL: false)!
-        components.queryItems = [URLQueryItem(name: "receiving", value: receive ? "true" : "false")]
+        components.queryItems = [URLQueryItem(name: "receiving", value: receive ? "true" : "false"), URLQueryItem(name: "direct", value: "1")]
         // A share window already open during a rename must not publish its stale
         // cached name over the containing app's newly saved configuration.
         if receive || updatingName { components.queryItems?.append(URLQueryItem(name: "deviceName", value: pairingDeviceName)) }
@@ -656,9 +668,21 @@ enum ComputerVault {
                     let base = done
                     let report: @MainActor @Sendable (Int64) -> Void = { [weak self] sent in self?.fraction = min(1, Double(base + sent) / total) }
                     let watcher = UploadProgress { sent in Task { @MainActor in report(sent) } }
-                    let (data, response) = file.bytes > Self.chunkSize
-                        ? try await uploadChunked(request, file: file.url, bytes: file.bytes, sent: report)
-                        : try await session.upload(for: request, fromFile: file.url, delegate: watcher)
+                    var data = Data(), response: URLResponse?
+                    // 같은 네트워크면 서버를 거치지 않고 바로 보냅니다(안 되면 아래에서 서버로).
+                    if let direct = directInfo, let query = components.percentEncodedQuery {
+                        do {
+                            let (status, body) = try await DirectLink.upload(direct, path: "/api/upload?" + query, file: file.url, bytes: file.bytes, contentType: "application/octet-stream", progress: { sent in Task { @MainActor in report(sent) } })
+                            data = body; response = try directResponse(status, path: "/api/upload")
+                        } catch is DirectUnavailable { directFailedUntil = Date().addingTimeInterval(60); report(0) }
+                    }
+                    if response == nil {
+                        let relayed = file.bytes > Self.chunkSize
+                            ? try await uploadChunked(request, file: file.url, bytes: file.bytes, sent: report)
+                            : try await session.upload(for: request, fromFile: file.url, delegate: watcher)
+                        data = relayed.0; response = relayed.1
+                    }
+                    guard let response else { throw AhnaError.message("응답을 읽을 수 없습니다.") }
                     try verify(response, data: data)
                     done += max(file.bytes, 1); fraction = min(1, Double(done) / total)
                     TransferLog.shared.record(sent: true, name: URL(fileURLWithPath: file.path).lastPathComponent, device: hostName, bytes: file.bytes)
@@ -729,7 +753,16 @@ enum ComputerVault {
             return existing
         }
         progress = "받는 중 · \(file.name)"
-        let (temporary, response) = try await session.download(for: request("/api/download/" + file.id))
+        var fetched: (URL, URLResponse)?
+        if let direct = directInfo {
+            do {
+                let (status, url, _) = try await DirectLink.download(direct, path: "/api/download/" + file.id)
+                fetched = (url, try directResponse(status, path: "/api/download/" + file.id))
+            } catch is DirectUnavailable { directFailedUntil = Date().addingTimeInterval(60) }
+        }
+        if fetched == nil { fetched = try await session.download(for: request("/api/download/" + file.id)) }
+        guard let fetched else { throw AhnaError.message("파일을 받지 못했습니다.") }
+        let (temporary, response) = fetched
         defer { try? FileManager.default.removeItem(at: temporary) }
         try verify(response)
         try Task.checkCancellation()
