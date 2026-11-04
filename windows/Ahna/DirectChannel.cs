@@ -77,7 +77,7 @@ public static class DirectWire
                 await stream.ReadExactlyAsync(frame, idle.Token);
             }
             catch (OperationCanceledException) when (!ct.IsCancellationRequested) { throw new IOException("상대 기기가 응답하지 않습니다."); }
-            var plain = new byte[length - 16];
+            var plain = new byte[frame.Length - 16];
             try { aes.Decrypt(Nonce(), frame.AsSpan(0, plain.Length), frame.AsSpan(plain.Length), plain); }
             catch (CryptographicException) { throw new IOException("직접 전송 데이터를 확인하지 못했습니다."); }
             return plain;
