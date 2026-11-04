@@ -398,21 +398,24 @@ app.MapFallback("/{**path}",async (HttpContext c)=>
         var waiting=new TaskCompletionSource<WebSocket>(TaskCreationOptions.RunContinuationsAsynchronously);pending[id]=(waiting,selected);
         await selected.Send.WaitAsync(ct);try{await Wire.SendJson(bridge,new{id},ct);}finally{selected.Send.Release();}
         data=await waiting.Task.WaitAsync(TimeSpan.FromSeconds(20),ct);
-        await Wire.SendJson(data,new RequestHead(c.Request.Method,path,total,c.Request.Headers.Cookie.ToString(),c.Request.ContentType),ct);
+        var progressKey=Wire.LargeBody(path)?ProgressKey(c):null;
+        await Wire.SendJson(data,new RequestHead(c.Request.Method,path,total,c.Request.Headers.Cookie.ToString(),c.Request.ContentType,progressKey is not null),ct);
         var head=await Wire.ReadJson<ResponseHead>(data,ct);
         if(head.Status==100)
         {
-            var progressKey=Wire.LargeBody(path)?ProgressKey(c):null;
-            await Wire.SendBody(data,c.Request.Body,length,ct,progressKey is null?null:n=>Progressed(progressKey,n));
+            // 받는 기기가 실제로 받은 양({"got"})을 진행률로 기록합니다. 응답 머리도 이 읽기가 받아 둡니다.
+            var acks=progressKey is null?null:new CancellationTokenSource(TimeSpan.FromHours(2));
+            var after=acks is null?null:Wire.ReadAfterBody(data,n=>Progressed(progressKey,n),acks.Token);
+            await Wire.SendBody(data,c.Request.Body,length,ct);
             if(total>length)
             {
                 // 첫 조각만 보냄: 이 연결을 나눠 올리기로 넘기고, 나머지 조각을 기다립니다.
                 var upload=Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
-                chunks[upload]=new ChunkUpload(selected,data,path,guestHost,total){Sent=length,Touched=DateTimeOffset.UtcNow,Key=progressKey};
+                chunks[upload]=new ChunkUpload(selected,data,path,guestHost,total){Sent=length,Touched=DateTimeOffset.UtcNow,Key=progressKey,After=after};
                 data=null;handedOff=true;
                 c.Response.StatusCode=202;await c.Response.WriteAsJsonAsync(new{upload,received=length});return;
             }
-            head=await Wire.ReadJson<ResponseHead>(data,ct);
+            head=after is null?await Wire.ReadJson<ResponseHead>(data,ct):await after.WaitAsync(ct);
         }
         await Relay(c,data,head,selected,path,guestHost,total,ct);
     }
@@ -451,12 +454,11 @@ app.MapPut("/_ahna/chunk/{upload}",async (string upload,HttpContext c)=>
         using var timeout=CancellationTokenSource.CreateLinkedTokenSource(c.RequestAborted);timeout.CancelAfter(TimeSpan.FromMinutes(45));var ct=timeout.Token;
         try
         {
-            var start=u.Sent;
-            await Wire.SendBody(u.Data,c.Request.Body,length,ct,u.Key is null?null:n=>Progressed(u.Key,start+n));
+            await Wire.SendBody(u.Data,c.Request.Body,length,ct);
             u.Sent+=length;u.Touched=DateTimeOffset.UtcNow;
             if(u.Sent<u.Total){c.Response.StatusCode=202;await c.Response.WriteAsJsonAsync(new{upload,received=u.Sent});return;}
             finished=true;
-            var head=await Wire.ReadJson<ResponseHead>(u.Data,ct);
+            var head=u.After is null?await Wire.ReadJson<ResponseHead>(u.Data,ct):await u.After.WaitAsync(ct);
             await Relay(c,u.Data,head,u.Bridge,u.Path,u.GuestHost,u.Total,ct);
         }
         catch{finished=true;throw;}
@@ -624,6 +626,8 @@ sealed class ChunkUpload(RelayConnection bridge,WebSocket data,string path,strin
     public SemaphoreSlim Gate{get;}=new(1,1);
     /// 진행률 키(X-Ahna-Upload). 없으면 null
     public string? Key{get;init;}
+    /// 받는 기기의 {"got"} 진행률을 읽으면서 마지막 응답 머리를 기다리는 작업(진행률 키가 있을 때)
+    public Task<ResponseHead>? After{get;init;}
 }
 
 sealed class Drop((string Name,long Bytes)[] files)

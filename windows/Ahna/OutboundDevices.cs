@@ -739,7 +739,7 @@ internal sealed class OutboundDevices : TransferServer.IExternalDevices, IDispos
 	private const long ChunkSize = 52428800L;
 
 	/// <summary>서버가 상대 기기로 실제로 넘긴 양을 1초마다 물어봅니다. 예전 서버(404)면 그만두고 이 PC가 보낸 양을 그대로 씁니다.</summary>
-	private async Task WatchProgress(Profile p, string key, Action<long> delivered, CancellationToken token)
+	private async Task WatchProgress(Profile p, string key, Action<long> delivered, Action missing, CancellationToken token)
 	{
 		Uri url = Endpoint(p.Address, "/_ahna/progress/" + key);
 		while (!token.IsCancellationRequested)
@@ -750,6 +750,7 @@ internal sealed class OutboundDevices : TransferServer.IExternalDevices, IDispos
 				using HttpResponseMessage response = await http.GetAsync(url, token);
 				if (response.StatusCode == HttpStatusCode.NotFound)
 				{
+					missing();
 					return;
 				}
 				if (!response.IsSuccessStatusCode)
@@ -813,10 +814,12 @@ internal sealed class OutboundDevices : TransferServer.IExternalDevices, IDispos
 				progress = new Progress(deviceId, p.Name, index, files.Length, name, 0L, size);
 				// 서버를 거칠 때는 서버가 상대에게 실제로 넘긴 양(serverTracks)이 진행률이 됩니다. Cloudflare가 올린 것을 먼저 다 받아 두어서
 				// 이 PC에서 보낸 양만 보면 실제보다 한참 먼저 100%가 되기 때문입니다.
-				bool serverTracks = false;
+				// relayed: 서버로 보내는 중(진행률은 받는 기기가 실제로 받은 양), serverMissing: 예전 서버라 그 값을 모름(이 PC가 보낸 양을 씀)
+				bool relayed = false;
+				bool serverMissing = false;
 				Action<long> report = (long sent) =>
 				{
-					if (!Volatile.Read(ref serverTracks))
+					if (!Volatile.Read(ref relayed) || Volatile.Read(ref serverMissing))
 					{
 						progress = new Progress(deviceId, p.Name, index, files.Length, name, sent, size);
 					}
@@ -844,12 +847,13 @@ internal sealed class OutboundDevices : TransferServer.IExternalDevices, IDispos
 				if (!direct)
 				{
 					string key = Guid.NewGuid().ToString("N");
+					Volatile.Write(ref relayed, true);
+					progress = new Progress(deviceId, p.Name, index, files.Length, name, 0L, size);
 					using CancellationTokenSource watch = CancellationTokenSource.CreateLinkedTokenSource(cancel.Token);
 					Task watcher = WatchProgress(p, key, (long delivered) =>
 					{
-						Volatile.Write(ref serverTracks, true);
 						progress = new Progress(deviceId, p.Name, index, files.Length, name, Math.Min(delivered, size), size);
-					}, watch.Token);
+					}, () => Volatile.Write(ref serverMissing, true), watch.Token);
 					try
 					{
 						if (size > ChunkSize && p.Address.StartsWith("https://", StringComparison.OrdinalIgnoreCase))

@@ -163,10 +163,12 @@ public static class Wire
 		}
 	}
 
-	public static async Task ReceiveBody(WebSocket ws, Stream output, long length, CancellationToken ct)
+	/// <summary>ack: 2 MiB마다(그리고 끝에) {"got":받은 양}을 서버에 보냅니다. 보내는 앱의 진행률이 실제로 받은 양을 따르게 합니다.</summary>
+	public static async Task ReceiveBody(WebSocket ws, Stream output, long length, CancellationToken ct, bool ack = false)
 	{
 		byte[] buffer = new byte[65536];
 		long left = length;
+		long acked = 0L;
 		while (left > 0)
 		{
 			WebSocketReceiveResult r = await ws.ReceiveAsync(buffer, ct);
@@ -176,6 +178,12 @@ public static class Wire
 			}
 			await output.WriteAsync(buffer.AsMemory(0, r.Count), ct);
 			left -= r.Count;
+			long got = length - left;
+			if (ack && (got - acked >= 2097152 || left == 0))
+			{
+				acked = got;
+				await SendJson(ws, new { got }, ct);
+			}
 		}
 	}
 }

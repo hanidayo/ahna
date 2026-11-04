@@ -354,7 +354,7 @@ public sealed class RemoteBridge : IAsyncDisposable
 					temporary = Path.Combine(cache, Guid.NewGuid().ToString("N") + ".part");
 					await Wire.SendJson(ws, new ResponseHead(100), ct);
 					await using FileStream file = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None, 65536, useAsync: true);
-					await Wire.ReceiveBody(ws, file, head.Length, ct);
+					await Wire.ReceiveBody(ws, file, head.Length, ct, head.Ack);
 				}
 				using HttpRequestMessage request = new HttpRequestMessage(new HttpMethod(head.Method), new Uri(local, head.Path));
 				request.Headers.TryAddWithoutValidation("Cookie", head.Cookie);

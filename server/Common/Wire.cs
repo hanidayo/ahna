@@ -3,7 +3,8 @@ using System.Text.Json;
 
 namespace Ahna.Remote;
 
-public sealed record RequestHead(string Method, string Path, long Length, string? Cookie, string? ContentType);
+// Ack: 받는 기기가 본문을 받으면서 {"got":받은 양}을 보내 달라는 뜻(서버가 진행률을 알려 줄 때). 예전 기기는 무시합니다.
+public sealed record RequestHead(string Method, string Path, long Length, string? Cookie, string? ContentType, bool Ack = false);
 public sealed record ResponseHead(int Status, long? Length = null, Dictionary<string,string[]>? Headers = null);
 // Build flavor. scripts/ahna-brand.py rewrites these three lines for the friends-only app 아나 (Ahna).
 public static class Brand
@@ -69,9 +70,26 @@ public static class Wire
         var buffer=new byte[65536];long left=length;
         while(left>0){var n=await input.ReadAsync(buffer.AsMemory(0,(int)Math.Min(buffer.Length,left)),ct);if(n==0)throw new IOException("Incomplete body");await ws.SendAsync(buffer.AsMemory(0,n),WebSocketMessageType.Binary,true,ct);left-=n;sent?.Invoke(length-left);}
     }
-    public static async Task ReceiveBody(WebSocket ws,Stream output,long length,CancellationToken ct)
+    /// ack: 2 MiB마다(그리고 끝에) {"got":받은 양}을 서버에 보냅니다. 보내는 앱의 진행률이 실제로 받은 양을 따르게 합니다.
+    public static async Task ReceiveBody(WebSocket ws,Stream output,long length,CancellationToken ct,bool ack=false)
     {
-        var buffer=new byte[65536];long left=length;
-        while(left>0){var r=await ws.ReceiveAsync(buffer,ct);if(r.MessageType!=WebSocketMessageType.Binary || r.Count==0 || r.Count>left)throw new IOException("Invalid relay body");await output.WriteAsync(buffer.AsMemory(0,r.Count),ct);left-=r.Count;}
+        var buffer=new byte[65536];long left=length,acked=0;
+        while(left>0)
+        {
+            var r=await ws.ReceiveAsync(buffer,ct);if(r.MessageType!=WebSocketMessageType.Binary || r.Count==0 || r.Count>left)throw new IOException("Invalid relay body");
+            await output.WriteAsync(buffer.AsMemory(0,r.Count),ct);left-=r.Count;
+            var got=length-left;
+            if(ack&&(got-acked>=2*1024*1024||left==0)){acked=got;await SendJson(ws,new{got},ct);}
+        }
     }
+    /// 본문을 보내는 동안 받는 기기가 보낸 {"got"}을 진행률로 넘기고, 다른 메시지(응답 머리)가 오면 그것을 돌려줍니다.
+    public static Task<ResponseHead> ReadAfterBody(WebSocket ws,Action<long> got,CancellationToken ct)=>Task.Run(async()=>
+    {
+        while(true)
+        {
+            var message=await ReadJson<JsonElement>(ws,ct);
+            if(message.ValueKind==JsonValueKind.Object&&message.TryGetProperty("got",out var value)&&value.TryGetInt64(out var n)){got(n);continue;}
+            return message.Deserialize<ResponseHead>()??throw new IOException("Missing relay message");
+        }
+    },ct);
 }

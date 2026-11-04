@@ -1,5 +1,5 @@
 FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0-alpine AS build
-ARG VERSION=1.4
+ARG VERSION=1.5
 ARG TARGETARCH
 WORKDIR /src
 COPY Common/ Common/
@@ -8,7 +8,7 @@ RUN dotnet publish Server/Ahna.Relay.csproj -c Release -a $TARGETARCH --no-self-
     -p:UseAppHost=false -p:Version=$VERSION -o /out
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0-alpine
-ARG VERSION=1.4
+ARG VERSION=1.5
 LABEL org.opencontainers.image.title="Ahna relay" \
       org.opencontainers.image.version="$VERSION" \
       org.opencontainers.image.description="아나(Ahna) 서버"

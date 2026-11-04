@@ -28,8 +28,8 @@ struct ServerState: Decodable {
     /// 같은 네트워크 직접 전송(DirectLink.swift): 상대가 알려 준 연결 정보. 예전 상대·Android는 없음
     let direct: DirectInfo?
 }
-/// 서버가 알려 준 실제 진행률을 쓰기 시작했는지(그 뒤로는 이 기기에서 보낸 양을 진행률로 쓰지 않음).
-@MainActor final class RelayProgressFlag { var server = false }
+/// relayed: 서버로 보내는 중(진행률은 받는 기기가 실제로 받은 양), missing: 예전 서버라 그 값을 모름(이 기기에서 보낸 양을 씀)
+@MainActor final class RelayProgressFlag { var relayed = false; var missing = false; var local: Bool { !relayed || missing } }
 struct PendingFile: Identifiable {
     let id = UUID()
     let url: URL
@@ -437,7 +437,7 @@ enum ComputerVault {
     }
     /// 서버를 거칠 때 서버가 상대에게 실제로 넘긴 양을 1초마다 물어봅니다(Cloudflare가 올린 것을 먼저 다 받아 두어
     /// 이 기기에서 보낸 양만 보면 실제보다 한참 먼저 100%가 됨). 예전 서버(404)면 그만둡니다.
-    private func watchProgress(_ key: String, delivered: @escaping @MainActor (Int64) -> Void) -> Task<Void, Never> {
+    private func watchProgress(_ key: String, missing: @escaping @MainActor () -> Void, delivered: @escaping @MainActor (Int64) -> Void) -> Task<Void, Never> {
         Task { @MainActor [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
@@ -445,7 +445,7 @@ enum ComputerVault {
                 guard let result = try? await self.session.data(for: request) else { continue }
                 let (data, response) = result
                 let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-                if status == 404 { return }
+                if status == 404 { missing(); return }
                 guard status == 200, let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
                       let done = (object["done"] as? NSNumber)?.int64Value, done > 0, !Task.isCancelled else { continue }
                 delivered(done)
@@ -645,7 +645,7 @@ enum ComputerVault {
                     let base = done
                     let flag = RelayProgressFlag()
                     let watcher = UploadProgress { [weak self] sent in
-                        Task { @MainActor in if !flag.server { self?.fraction = min(1, Double(base + sent) / total) } }
+                        Task { @MainActor in if flag.local { self?.fraction = min(1, Double(base + sent) / total) } }
                     }
                     var data = Data(), response: URLResponse?
                     // 같은 네트워크면 서버를 거치지 않고 바로 보냅니다(안 되면 아래에서 서버로).
@@ -658,10 +658,11 @@ enum ComputerVault {
                     if response == nil {
                         let key = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
                         request.setValue(key, forHTTPHeaderField: "X-Ahna-Upload")
-                        let watch = watchProgress(key) { [weak self] delivered in flag.server = true; self?.fraction = min(1, Double(base + min(delivered, file.bytes)) / total) }
+                        flag.relayed = true; fraction = min(1, Double(base) / total)
+                        let watch = watchProgress(key, missing: { flag.missing = true }) { [weak self] delivered in self?.fraction = min(1, Double(base + min(delivered, file.bytes)) / total) }
                         defer { watch.cancel() }
                         let relayed = file.bytes > Self.chunkSize
-                            ? try await uploadChunked(request, file: file.url, bytes: file.bytes) { [weak self] sent in if !flag.server { self?.fraction = min(1, Double(base + sent) / total) } }
+                            ? try await uploadChunked(request, file: file.url, bytes: file.bytes) { [weak self] sent in if flag.local { self?.fraction = min(1, Double(base + sent) / total) } }
                             : try await session.upload(for: request, fromFile: file.url, delegate: watcher)
                         data = relayed.0; response = relayed.1
                     }

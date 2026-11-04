@@ -127,7 +127,7 @@ public sealed class RemoteBridge : IAsyncDisposable
                 NoLinks(cache);Directory.CreateDirectory(cache);NoLinks(cache);
                 temporary=Path.Combine(cache,Guid.NewGuid().ToString("N")+".part");
                 await Wire.SendJson(ws,new ResponseHead(100),ct);
-                await using(var file=new FileStream(temporary,FileMode.CreateNew,FileAccess.Write,FileShare.None,65536,true))await Wire.ReceiveBody(ws,file,head.Length,ct);
+                await using(var file=new FileStream(temporary,FileMode.CreateNew,FileAccess.Write,FileShare.None,65536,true))await Wire.ReceiveBody(ws,file,head.Length,ct,head.Ack);
             }
             else await Wire.SendJson(ws,new ResponseHead(100),ct);
             using var request=new HttpRequestMessage(new HttpMethod(head.Method),new Uri(local,head.Path));

@@ -110,10 +110,14 @@ final class MobileNASBridge: @unchecked Sendable {
             FileManager.default.createFile(atPath: part.path, contents: nil); upload = part
             let file = try FileHandle(forWritingTo: part); defer { try? file.close() }
             try await sendJSON(["Status": 100], socket)
-            var left = size.int64Value
+            var left = size.int64Value, acked: Int64 = 0
+            // 서버가 원하면 2 MiB마다(그리고 끝에) 받은 양을 알려 줍니다. 보내는 앱의 진행률이 실제로 받은 양을 따르게 합니다.
+            let ack = head["Ack"] as? Bool == true
             while left > 0 {
                 guard case .data(let bytes) = try await socket.receive(), !bytes.isEmpty, bytes.count <= 65536, Int64(bytes.count) <= left else { throw AhnaError.message("중계 파일이 중단되었습니다.") }
                 try file.write(contentsOf: bytes); left -= Int64(bytes.count)
+                let got = size.int64Value - left
+                if ack, got - acked >= 2 * 1024 * 1024 || left == 0 { acked = got; try await sendJSON(["got": got], socket) }
             }
             try file.close(); request.setValue(String(size.int64Value), forHTTPHeaderField: "Content-Length")
         } else { try await sendJSON(["Status": 100], socket) }
