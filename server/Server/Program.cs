@@ -78,6 +78,13 @@ app.Use(async(c,next)=>
     try{await next(c);}catch(OperationCanceledException){if(!c.Response.HasStarted)c.Response.StatusCode=504;else c.Abort();}
     catch{if(!c.Response.HasStarted){c.Response.StatusCode=502;await c.Response.WriteAsync("아나 연결이 끊겼습니다. 상대 기기의 아나와 인터넷 연결을 확인하세요.");}else c.Abort();}
 });
+// 보내는 앱이 붙인 X-Ahna-Upload(32자리 16진수)별로, 받는 기기 쪽으로 실제로 넘긴 양.
+// Cloudflare는 올린 요청을 먼저 다 받아 두기 때문에 보내는 앱의 진행률은 실제보다 앞서 100%가 됩니다. 앱은 이 값으로 진행률을 보여 줍니다.
+var uploadProgress=new ConcurrentDictionary<string,(long Done,DateTimeOffset Touched)>();
+string? ProgressKey(HttpContext c){var k=c.Request.Headers["X-Ahna-Upload"].ToString();return k.Length==32&&k.All(ch=>ch is >='0' and <='9' or >='a' and <='f')?k:null;}
+void Progressed(string? key,long done){if(key is not null&&(uploadProgress.Count<5000||uploadProgress.ContainsKey(key)))uploadProgress[key]=(done,DateTimeOffset.UtcNow);}
+_=Task.Run(async()=>{while(true){await Task.Delay(TimeSpan.FromMinutes(1));foreach(var item in uploadProgress)if(DateTimeOffset.UtcNow-item.Value.Touched>TimeSpan.FromMinutes(10))uploadProgress.TryRemove(item.Key,out _);}});
+app.MapGet("/_ahna/progress/{key}",(string key,HttpContext c)=>{c.Response.Headers.CacheControl="no-store";return Results.Json(new{done=uploadProgress.TryGetValue(key,out var p)?p.Done:0L});});
 app.MapGet("/_ahna/version",()=>Results.Json(new{name="ahna-relay",version=relayVersion,invite=invite.Length>0}));
 // 앱 업데이트: GitHub Actions가 빌드한 파일을 PUT /_ahna/admin/update/{이름} 으로 올리고(AHNA_PUBLISH_KEY),
 // 앱은 GET /_ahna/update/latest.json 을 확인합니다. 파일은 컨테이너의 /data 볼륨에 있어 컨테이너를 다시 만들 필요가 없습니다.
@@ -395,12 +402,13 @@ app.MapFallback("/{**path}",async (HttpContext c)=>
         var head=await Wire.ReadJson<ResponseHead>(data,ct);
         if(head.Status==100)
         {
-            await Wire.SendBody(data,c.Request.Body,length,ct);
+            var progressKey=Wire.LargeBody(path)?ProgressKey(c):null;
+            await Wire.SendBody(data,c.Request.Body,length,ct,progressKey is null?null:n=>Progressed(progressKey,n));
             if(total>length)
             {
                 // 첫 조각만 보냄: 이 연결을 나눠 올리기로 넘기고, 나머지 조각을 기다립니다.
                 var upload=Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
-                chunks[upload]=new ChunkUpload(selected,data,path,guestHost,total){Sent=length,Touched=DateTimeOffset.UtcNow};
+                chunks[upload]=new ChunkUpload(selected,data,path,guestHost,total){Sent=length,Touched=DateTimeOffset.UtcNow,Key=progressKey};
                 data=null;handedOff=true;
                 c.Response.StatusCode=202;await c.Response.WriteAsJsonAsync(new{upload,received=length});return;
             }
@@ -443,7 +451,8 @@ app.MapPut("/_ahna/chunk/{upload}",async (string upload,HttpContext c)=>
         using var timeout=CancellationTokenSource.CreateLinkedTokenSource(c.RequestAborted);timeout.CancelAfter(TimeSpan.FromMinutes(45));var ct=timeout.Token;
         try
         {
-            await Wire.SendBody(u.Data,c.Request.Body,length,ct);
+            var start=u.Sent;
+            await Wire.SendBody(u.Data,c.Request.Body,length,ct,u.Key is null?null:n=>Progressed(u.Key,start+n));
             u.Sent+=length;u.Touched=DateTimeOffset.UtcNow;
             if(u.Sent<u.Total){c.Response.StatusCode=202;await c.Response.WriteAsJsonAsync(new{upload,received=u.Sent});return;}
             finished=true;
@@ -613,6 +622,8 @@ sealed class ChunkUpload(RelayConnection bridge,WebSocket data,string path,strin
     public long Total{get;}=total; public long Sent{get;set;}
     public DateTimeOffset Touched{get;set;}
     public SemaphoreSlim Gate{get;}=new(1,1);
+    /// 진행률 키(X-Ahna-Upload). 없으면 null
+    public string? Key{get;init;}
 }
 
 sealed class Drop((string Name,long Bytes)[] files)

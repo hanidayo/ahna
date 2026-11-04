@@ -738,7 +738,38 @@ internal sealed class OutboundDevices : TransferServer.IExternalDevices, IDispos
 	// 첫 조각에 X-Ahna-Total(전체 크기)을 붙이면 서버가 받는 기기로는 한 파일처럼 이어 보내고, 나머지는 /_ahna/chunk로 받습니다.
 	private const long ChunkSize = 52428800L;
 
-	private async Task UploadChunked(Profile p, string path, string file, long size, Action<long> report, CancellationToken token)
+	/// <summary>서버가 상대 기기로 실제로 넘긴 양을 1초마다 물어봅니다. 예전 서버(404)면 그만두고 이 PC가 보낸 양을 그대로 씁니다.</summary>
+	private async Task WatchProgress(Profile p, string key, Action<long> delivered, CancellationToken token)
+	{
+		Uri url = Endpoint(p.Address, "/_ahna/progress/" + key);
+		while (!token.IsCancellationRequested)
+		{
+			await Task.Delay(1000, token);
+			try
+			{
+				using HttpResponseMessage response = await http.GetAsync(url, token);
+				if (response.StatusCode == HttpStatusCode.NotFound)
+				{
+					return;
+				}
+				if (!response.IsSuccessStatusCode)
+				{
+					continue;
+				}
+				using JsonDocument doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(token));
+				long done = doc.RootElement.GetProperty("done").GetInt64();
+				if (done > 0)
+				{
+					delivered(done);
+				}
+			}
+			catch (Exception e) when (e is HttpRequestException or JsonException or KeyNotFoundException or InvalidOperationException)
+			{
+			}
+		}
+	}
+
+	private async Task UploadChunked(Profile p, string path, string file, long size, Action<long> report, CancellationToken token, string? key = null)
 	{
 		string upload = "";
 		long offset = 0L;
@@ -749,7 +780,7 @@ internal sealed class OutboundDevices : TransferServer.IExternalDevices, IDispos
 			ProgressContent content = new ProgressContent(file, count, (long sent) => report(start + sent), token, offset);
 			content.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
 			using HttpResponseMessage response = (offset == 0L)
-				? await Request(p, HttpMethod.Post, path, content, token, new Dictionary<string, string> { ["X-Ahna-Total"] = size.ToString(System.Globalization.CultureInfo.InvariantCulture) })
+				? await Request(p, HttpMethod.Post, path, content, token, key == null ? new Dictionary<string, string> { ["X-Ahna-Total"] = size.ToString(System.Globalization.CultureInfo.InvariantCulture) } : new Dictionary<string, string> { ["X-Ahna-Total"] = size.ToString(System.Globalization.CultureInfo.InvariantCulture), ["X-Ahna-Upload"] = key })
 				: await Request(p, HttpMethod.Put, "/_ahna/chunk/" + upload, content, token, new Dictionary<string, string> { ["X-Ahna-Offset"] = offset.ToString(System.Globalization.CultureInfo.InvariantCulture) });
 			offset += count;
 			if (offset < size)
@@ -780,16 +811,23 @@ internal sealed class OutboundDevices : TransferServer.IExternalDevices, IDispos
 				long size = new FileInfo(file).Length;
 				int index = i + 1;
 				progress = new Progress(deviceId, p.Name, index, files.Length, name, 0L, size);
-				ProgressContent content = new ProgressContent(file, size, (long sent) =>
+				// 서버를 거칠 때는 서버가 상대에게 실제로 넘긴 양(serverTracks)이 진행률이 됩니다. Cloudflare가 올린 것을 먼저 다 받아 두어서
+				// 이 PC에서 보낸 양만 보면 실제보다 한참 먼저 100%가 되기 때문입니다.
+				bool serverTracks = false;
+				Action<long> report = (long sent) =>
 				{
-					progress = new Progress(deviceId, p.Name, index, files.Length, name, sent, size);
-				}, cancel.Token);
+					if (!Volatile.Read(ref serverTracks))
+					{
+						progress = new Progress(deviceId, p.Name, index, files.Length, name, sent, size);
+					}
+				};
+				ProgressContent content = new ProgressContent(file, size, report, cancel.Token);
 				content.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
 				string uploadPath = "/api/upload?batch=" + batch + "&path=" + Uri.EscapeDataString(name);
 				bool direct = false;
-				if (size > ChunkSize && DirectFor(p, HttpMethod.Post, uploadPath) is DirectInfo info)
+				if (DirectFor(p, HttpMethod.Post, uploadPath) is DirectInfo info)
 				{
-					// 같은 네트워크면 나눌 필요 없이 한 번에 바로 보냅니다. 안 되면 아래에서 서버로 나눠 보냅니다.
+					// 같은 네트워크면 나눌 필요 없이 한 번에 바로 보냅니다. 안 되면 아래에서 서버로 보냅니다.
 					try
 					{
 						using (Check(p, await DirectClient.SendAsync(info, HttpMethod.Post, uploadPath, content, cancel.Token)))
@@ -803,20 +841,38 @@ internal sealed class OutboundDevices : TransferServer.IExternalDevices, IDispos
 						progress = new Progress(deviceId, p.Name, index, files.Length, name, 0L, size);
 					}
 				}
-				if (direct)
+				if (!direct)
 				{
-				}
-				else if (size > ChunkSize && p.Address.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
-				{
-					await UploadChunked(p, uploadPath, file, size, (long sent) =>
+					string key = Guid.NewGuid().ToString("N");
+					using CancellationTokenSource watch = CancellationTokenSource.CreateLinkedTokenSource(cancel.Token);
+					Task watcher = WatchProgress(p, key, (long delivered) =>
 					{
-						progress = new Progress(deviceId, p.Name, index, files.Length, name, sent, size);
-					}, cancel.Token);
-				}
-				else
-				{
-					using (await Request(p, HttpMethod.Post, uploadPath, content, cancel.Token))
+						Volatile.Write(ref serverTracks, true);
+						progress = new Progress(deviceId, p.Name, index, files.Length, name, Math.Min(delivered, size), size);
+					}, watch.Token);
+					try
 					{
+						if (size > ChunkSize && p.Address.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+						{
+							await UploadChunked(p, uploadPath, file, size, report, cancel.Token, key);
+						}
+						else
+						{
+							using (await Request(p, HttpMethod.Post, uploadPath, content, cancel.Token, new Dictionary<string, string> { ["X-Ahna-Upload"] = key }))
+							{
+							}
+						}
+					}
+					finally
+					{
+						watch.Cancel();
+						try
+						{
+							await watcher;
+						}
+						catch
+						{
+						}
 					}
 				}
 				server.RecordExternal("send", name, size, deviceId, p.Name, "상대 저장 완료");

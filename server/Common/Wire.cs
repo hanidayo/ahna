@@ -64,10 +64,10 @@ public static class Wire
         do {r=await ws.ReceiveAsync(buffer,ct);if(r.MessageType!=WebSocketMessageType.Text || m.Length+r.Count>32768)throw new IOException("Invalid relay message");m.Write(buffer,0,r.Count);}while(!r.EndOfMessage);
         return JsonSerializer.Deserialize<T>(m.ToArray())??throw new IOException("Missing relay message");
     }
-    public static async Task SendBody(WebSocket ws,Stream input,long length,CancellationToken ct)
+    public static async Task SendBody(WebSocket ws,Stream input,long length,CancellationToken ct,Action<long>? sent=null)
     {
         var buffer=new byte[65536];long left=length;
-        while(left>0){var n=await input.ReadAsync(buffer.AsMemory(0,(int)Math.Min(buffer.Length,left)),ct);if(n==0)throw new IOException("Incomplete body");await ws.SendAsync(buffer.AsMemory(0,n),WebSocketMessageType.Binary,true,ct);left-=n;}
+        while(left>0){var n=await input.ReadAsync(buffer.AsMemory(0,(int)Math.Min(buffer.Length,left)),ct);if(n==0)throw new IOException("Incomplete body");await ws.SendAsync(buffer.AsMemory(0,n),WebSocketMessageType.Binary,true,ct);left-=n;sent?.Invoke(length-left);}
     }
     public static async Task ReceiveBody(WebSocket ws,Stream output,long length,CancellationToken ct)
     {
