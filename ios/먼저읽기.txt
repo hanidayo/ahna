@@ -1,0 +1,15 @@
+아나 iPhone/iPad
+
+설치 파일은 GitHub 릴리스의 Ahna-iOS.ipa 입니다 (서명 전 IPA).
+https://github.com/hanidayo/ahna-releases/releases/latest
+
+설치·업데이트 방법은 공개 저장소의 INSTALL-IOS.md를 보세요.
+
+새 버전 알림
+앱의 옵션 탭에서 새 버전을 알려 줍니다. iOS는 사이드로드 앱이 스스로 교체할 수 없어서,
+[새 IPA 받기]로 내려받은 뒤 위 방법으로 덮어 설치하세요. 연결·설정·받은 파일은 유지됩니다.
+
+직접 빌드 (Mac)
+  AHNA_TEAM_ID=6PHYY26T68 bash Sideloadly용IPA만들기.command
+검사 스크립트(자동저장검증, 다중연결검증, 휴대폰직접연결검증)를 먼저 실행하고 dist/에 IPA를 만듭니다.
+GitHub Actions도 같은 스크립트로 IPA를 만듭니다.

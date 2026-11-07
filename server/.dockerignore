@@ -1,0 +1,7 @@
+**/bin
+**/obj
+.env
+.env.*
+Tests
+*.zip
+*.log

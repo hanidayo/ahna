@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ahna_bg">#FF1c1c1c</color>
+    <color name="ahna_accent">#FF4CC2FF</color>
+    <style name="AhnaTheme" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/ahna_bg</item>
+        <item name="android:colorPrimary">@color/ahna_accent</item>
+        <item name="android:colorPrimaryDark">@color/ahna_bg</item>
+        <item name="android:colorAccent">@color/ahna_accent</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
+</resources>

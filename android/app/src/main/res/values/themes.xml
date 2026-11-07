@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ahna_bg">#FFEEF1F5</color>
+    <color name="ahna_accent">#FF005FB8</color>
+    <!-- 시스템 다크 모드를 따릅니다 (values-night 참고). 화면은 코드에서 그립니다. -->
+    <style name="AhnaTheme" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/ahna_bg</item>
+        <item name="android:colorPrimary">@color/ahna_accent</item>
+        <item name="android:colorPrimaryDark">@color/ahna_bg</item>
+        <item name="android:colorAccent">@color/ahna_accent</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+    </style>
+</resources>
