@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""정식 배포: 빌드한 앱 파일을 공개 배포 저장소(GitHub Releases)의 vX.Y 초안에 올립니다.
+"""배포: 빌드한 앱 파일을 GitHub Releases의 vX.Y 초안에 올립니다.
 
-    GH_TOKEN=… RELEASES_REPO=hanidayo/ahna-releases python3 scripts/release_asset.py dist/Ahna-Setup.exe 1.0 [출력이름]
+    GH_TOKEN=… RELEASES_REPO=소유자/저장소 python3 scripts/release_asset.py dist/Ahna-Setup.exe 1.0 [출력이름]
 
 파일 이름 그대로 올립니다(버전이 없는 이름 → releases/latest/download/파일 이 늘 최신을 가리킴).
 출력: {"name", "sha256", "size"} (GITHUB_OUTPUT의 출력이름=… 으로도 남김). latest.json은 make_manifest.py가 만듭니다.
@@ -10,8 +10,9 @@ import hashlib, json, os, pathlib, subprocess, sys
 
 path, version = pathlib.Path(sys.argv[1]), sys.argv[2].lstrip("vV")
 output = sys.argv[3] if len(sys.argv) > 3 else "asset"
-repo = os.environ.get("RELEASES_REPO", "hanidayo/ahna-releases")
-if not os.environ.get("GH_TOKEN"): sys.exit("비밀값 RELEASES_TOKEN이 없습니다.")
+repo = os.environ.get("RELEASES_REPO") or os.environ.get("GITHUB_REPOSITORY", "")
+if not repo: sys.exit("RELEASES_REPO(소유자/저장소)를 지정하세요.")
+if not os.environ.get("GH_TOKEN"): sys.exit("GH_TOKEN이 없습니다.")
 digest = hashlib.sha256()
 with path.open("rb") as f:
     for chunk in iter(lambda: f.read(1 << 20), b""): digest.update(chunk)

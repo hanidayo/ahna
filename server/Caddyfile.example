@@ -1,0 +1,7 @@
+# 아래 주소를 내 서버 주소(.env의 AHNA_ORIGIN에서 https:// 를 뺀 것)로 바꾸세요.
+ahna.example.com {
+	reverse_proxy 127.0.0.1:45833 {
+		# 큰 파일을 받는 대로 바로 넘깁니다(쌓아 두지 않음)
+		flush_interval -1
+	}
+}

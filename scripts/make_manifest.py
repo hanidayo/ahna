@@ -1,20 +1,22 @@
 #!/usr/bin/env python3
-"""정식 배포 마지막 단계: 각 빌드가 서버에 올린 파일 정보로 latest.json을 만들어 올립니다.
+"""배포 마지막 단계: 각 빌드가 릴리스에 올린 파일 정보로 latest.json을 만듭니다.
 
-    WINDOWS='{...}' WINDOWS_SETUP='{...}' IOS='{...}' MAC='{...}' ANDROID='{...}' python3 scripts/make_manifest.py 1.0.5
-(각 값은 scripts/upload.py가 출력한 JSON). 앱은 {서버}/_ahna/update/latest.json 을 6시간마다 확인합니다.
+    WINDOWS='{...}' WINDOWS_SETUP='{...}' IOS='{...}' MAC='{...}' ANDROID='{...}' \\
+    RELEASE_BASE=https://github.com/소유자/저장소/releases/download/v1.0 python3 scripts/make_manifest.py 1.0 dist/latest.json
+
+각 값은 scripts/release_asset.py가 출력한 JSON입니다. 만든 latest.json도 같은 릴리스에 올리면,
+앱이 https://github.com/{저장소}/releases/latest/download/latest.json 으로 새 버전을 확인합니다.
 """
-import datetime, json, os, pathlib, subprocess, sys, tempfile
+import datetime, json, os, pathlib, sys
 
-version = sys.argv[1].lstrip("v")
-root = pathlib.Path(__file__).resolve().parents[1]
-server = subprocess.run([sys.executable, str(root / "scripts/upload.py"), "--server"], capture_output=True, text=True, check=True).stdout.strip()
+version = sys.argv[1].lstrip("vV")
+output = pathlib.Path(sys.argv[2] if len(sys.argv) > 2 else "latest.json")
+base = os.environ.get("RELEASE_BASE", "").rstrip("/")
+if not base: sys.exit("RELEASE_BASE(릴리스 파일 주소)를 지정하세요.")
 def asset(env):
     value = os.environ.get(env, "").strip()
     if not value: return None
     a = json.loads(value)
-    # 앱 파일은 공개 배포 저장소(GitHub Releases)에서 받습니다(RELEASE_BASE). 없으면 예전처럼 서버에서.
-    base = os.environ.get("RELEASE_BASE", "").rstrip("/") or f"{server}/_ahna/update"
     return {"url": f"{base}/{a['name']}", "sha256": a["sha256"], "size": a["size"]}
 missing = [k for k in ("WINDOWS", "IOS", "MAC", "ANDROID") if not os.environ.get(k, "").strip()]
 if missing: sys.exit("빌드 결과를 받지 못했습니다: " + ", ".join(missing))
@@ -23,11 +25,9 @@ setup = asset("WINDOWS_SETUP")
 manifest = {
     "name": "아나", "version": version,
     "publishedAt": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-    "notesUrl": os.environ.get("NOTES_URL") or f"{server}/_ahna/download", "fullInstallRequired": False,
+    "notesUrl": os.environ.get("NOTES_URL") or None, "fullInstallRequired": False,
     "platforms": platforms, "downloads": {"windows": setup["url"]} if setup else {},
 }
-folder = pathlib.Path(tempfile.mkdtemp())
-(folder / "latest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
-print("버전", version, "· 플랫폼", ", ".join(platforms))
-# 앱 파일을 모두 올린 뒤 마지막에 올립니다(서버는 여기에 없는 예전 파일을 지웁니다).
-subprocess.run([sys.executable, str(root / "scripts/upload.py"), str(folder / "latest.json"), "latest.json", "manifest"], check=True)
+output.parent.mkdir(parents=True, exist_ok=True)
+output.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+print("버전", version, "· 플랫폼", ", ".join(platforms), "→", output)

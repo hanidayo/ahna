@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """모든 플랫폼의 버전을 한 번에 맞춥니다.
 
-    python3 scripts/set_version.py 1.0      (X.Y, 잠수함 패치용 X.Y.Z도 가능)
+    python3 scripts/set_version.py 1.0      (X.Y 또는 X.Y.Z)
 
-VERSION 파일, Windows/Mac/iOS/Android/NAS 프로젝트와 웹 화면 표기를 같은 버전으로 바꿉니다.
-CI(release.yml)가 태그(vX.Y.Z)로 자동 실행하므로 평소에는 VERSION만 바꾸고 태그를 올리면 됩니다.
+VERSION 파일, Windows/Mac/iOS/Android/서버 프로젝트와 웹 화면 표기를 같은 버전으로 바꿉니다.
+GitHub Actions(release.yml)가 빌드할 때 입력한 버전으로 자동 실행합니다.
 """
 import argparse, pathlib, re, sys
 
@@ -23,9 +23,8 @@ if not re.fullmatch(r"\d+\.\d+(\.\d+)?", v):
     sys.exit("버전은 X.Y 형식이어야 합니다: " + v)
 major, minor, patch = (list(map(int, v.split("."))) + [0])[:3]
 full = f"{major}.{minor}.{patch}"   # 4자리 버전이 필요한 곳(Windows 파일 버전)
-# 빌드 번호는 버전에서 계산합니다(1.0.0 → 30000). 새 서버로 옮기며 버전을 1.0.0으로 되돌렸으므로
-# 예전 빌드(1.0.x → 100xx)보다 커지게 20000을 더합니다(안드로이드는 빌드 번호가 작으면 덮어 설치가 안 됨).
-code = a.build or (20000 + major * 10000 + minor * 100 + patch)
+# 빌드 번호는 버전에서 계산합니다(1.0 → 10000, 1.2.3 → 10203). 안드로이드는 빌드 번호가 커야 덮어 설치됩니다.
+code = a.build or (major * 10000 + minor * 100 + patch)
 
 
 def sub(rel, pattern, repl, count=0, required=True):
@@ -61,7 +60,7 @@ sub("android/app/build.gradle", r"versionCode \d+; versionName '[^']*'", f"versi
 sub("android/build_apk.py", r"'--version-code','\d+','--version-name','[^']*'", f"'--version-code','{code}','--version-name','{v}'")
 sub("android/build_apk.py", r"Ahna-[\d.]+-Android\.apk", f"Ahna-{v}-Android.apk")
 
-# NAS
+# 서버
 sub("server/Server/Ahna.Relay.csproj", r"<Version>[^<]*</Version>", f"<Version>{v}</Version>")
 sub("server/Dockerfile", r"ARG VERSION=[\d.]+", f"ARG VERSION={v}")
 

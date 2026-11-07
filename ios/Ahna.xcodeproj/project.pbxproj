@@ -283,8 +283,8 @@
         "SUPPORTED_PLATFORMS" = "iphoneos iphonesimulator";
         "CODE_SIGN_STYLE" = "Automatic";
         "DEVELOPMENT_TEAM" = "";
-        "MARKETING_VERSION" = "1.5";
-        "CURRENT_PROJECT_VERSION" = "30500";
+        "MARKETING_VERSION" = "1.0";
+        "CURRENT_PROJECT_VERSION" = "10000";
         "CODE_SIGN_ENTITLEMENTS" = "Shared/Ahna.entitlements";
         "SWIFT_OPTIMIZATION_LEVEL" = "-Onone";
         "SWIFT_ACTIVE_COMPILATION_CONDITIONS" = "DEBUG $(inherited)";
@@ -304,8 +304,8 @@
         "SUPPORTED_PLATFORMS" = "iphoneos iphonesimulator";
         "CODE_SIGN_STYLE" = "Automatic";
         "DEVELOPMENT_TEAM" = "";
-        "MARKETING_VERSION" = "1.5";
-        "CURRENT_PROJECT_VERSION" = "30500";
+        "MARKETING_VERSION" = "1.0";
+        "CURRENT_PROJECT_VERSION" = "10000";
         "CODE_SIGN_ENTITLEMENTS" = "Shared/Ahna.entitlements";
       };
       "name" = "Release";

@@ -34,7 +34,7 @@ enum AhnaPalette {
         func c(_ hex: UInt32) -> (Double, Double, Double) { (Double((hex >> 16) & 0xFF) / 255, Double((hex >> 8) & 0xFF) / 255, Double(hex & 0xFF) / 255) }
         return dynamic(light: c(light), dark: c(dark))
     }
-    /// 앱 강조색. 바로드롭과 같은 파랑: 라이트 #005FB8 / 다크 #4CC2FF
+    /// 앱 강조색. 라이트 #005FB8 / 다크 #4CC2FF
     static let accent = dynamic(light: (0.0, 0.373, 0.722), dark: (0.298, 0.761, 1.0))
     /// 온라인. 라이트 #1E7A46 / 다크 #4ADE80 (어두운 배경 대비 9:1 이상)
     static let online = dynamic(light: (0.118, 0.478, 0.275), dark: (0.290, 0.871, 0.502))

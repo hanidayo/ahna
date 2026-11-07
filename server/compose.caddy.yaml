@@ -1,0 +1,19 @@
+# (우분투 서버용) HTTPS 앞단: Caddy가 인증서를 자동으로 받아 443 포트로 받고 아나 서버(127.0.0.1:45833)로 넘깁니다.
+#   cp Caddyfile.example Caddyfile  → 주소를 내 서버 주소로 바꾼 뒤
+#   docker compose -f compose.yaml -f compose.caddy.yaml up -d --build
+# 공유기에서 TCP 443(인증서용으로 80도 권장)을 이 컴퓨터로 넘겨야 합니다. docs/서버-우분투.md 참고.
+services:
+  caddy:
+    image: caddy:2
+    container_name: ahna-caddy
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    mem_limit: 128m
+
+volumes:
+  caddy-data:
+  caddy-config:
