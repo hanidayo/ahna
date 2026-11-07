@@ -25,7 +25,7 @@ import javax.crypto.spec.SecretKeySpec;
  *   첫 레코드 {"m","p","l","t"} → 본문 / 응답 첫 레코드 {"s","l"} → 본문
  */
 final class DirectLink {
-    static final int PORT = 45853;
+    static final int PORT = 45863;
     static final int RECORD = 1 << 20;
     static final byte[] MAGIC = "AHNADR01".getBytes(StandardCharsets.US_ASCII);
     private static final SecureRandom RANDOM = new SecureRandom();

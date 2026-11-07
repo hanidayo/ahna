@@ -9,7 +9,7 @@
 	<key>CFBundleIconFile</key>
 	<string>Ahna.icns</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.hanidayo.ahna.mac</string>
+	<string>io.ahna.open.mac</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>LSHasLocalizedDisplayName</key>

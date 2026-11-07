@@ -143,7 +143,7 @@ enum ComputerVault {
     private static var query: [String: Any] {
         get throws {
             return [kSecClass as String: kSecClassGenericPassword,
-                    kSecAttrService as String: "Ahna.Mac.Configuration.v1",
+                    kSecAttrService as String: "AhnaOpen.Mac.Configuration.v1",
                     kSecAttrAccount as String: "configuration"]
         }
     }

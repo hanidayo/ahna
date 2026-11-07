@@ -14,9 +14,9 @@ namespace Ahna;
 
 internal static class WindowsShare
 {
-	public const string PipeName = "Ahna.v1";
+	public const string PipeName = "AhnaOpen.v1";
 
-	public static string CacheRoot => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Ahna", "WindowsShare");
+	public static string CacheRoot => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AhnaOpen", "WindowsShare");
 
 	public static bool HasPackageIdentity
 	{
@@ -64,7 +64,7 @@ internal static class WindowsShare
 		IActivatedEventArgs activatedEventArgs = AppInstance.GetActivatedEventArgs();
 		try
 		{
-			string path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Ahna", "activation.log");
+			string path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AhnaOpen", "activation.log");
 			Directory.CreateDirectory(Path.GetDirectoryName(path));
 			File.AppendAllText(path, $"{DateTimeOffset.Now:O} pid={Environment.ProcessId} activation={activatedEventArgs?.Kind.ToString() ?? "Direct"}\n");
 		}
@@ -78,7 +78,7 @@ internal static class WindowsShare
 		return e.ShareOperation;
 	}
 
-	public static async Task ForwardAsync(string[] args, CancellationToken cancellation = default(CancellationToken), string pipeName = "Ahna.v1")
+	public static async Task ForwardAsync(string[] args, CancellationToken cancellation = default(CancellationToken), string pipeName = "AhnaOpen.v1")
 	{
 		using NamedPipeClientStream client = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
 		await client.ConnectAsync(1500, cancellation);
@@ -97,11 +97,11 @@ internal static class WindowsShare
 
 	public static async Task DeliverAsync(string manifest, CancellationToken cancellation)
 	{
-		bool flag = Mutex.TryOpenExisting("Local\\Ahna.v1", out Mutex result);
+		bool flag = Mutex.TryOpenExisting("Local\\AhnaOpen.v1", out Mutex result);
 		result?.Dispose();
 		if (!flag)
 		{
-			Process.Start(new ProcessStartInfo(Path.Combine(AppContext.BaseDirectory, "Ahna.exe"))
+			Process.Start(new ProcessStartInfo(Path.Combine(AppContext.BaseDirectory, "AhnaOpen.exe"))
 			{
 				UseShellExecute = false,
 				CreateNoWindow = true,

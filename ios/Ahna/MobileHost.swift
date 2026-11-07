@@ -93,7 +93,7 @@ final class MobileHTTPHost: @unchecked Sendable {
         if code == errSecItemNotFound { return nil }
         guard code == errSecSuccess else { throw AhnaError.message("기기 잠금을 해제하고 다시 실행하세요. (\(code))") }; return result as? Data
     }
-    init(directory: URL? = nil, receivingDirectory: URL? = nil, encryptionKey: Data? = nil, stableIdentity: String? = nil, port: UInt16 = 45851) throws {
+    init(directory: URL? = nil, receivingDirectory: URL? = nil, encryptionKey: Data? = nil, stableIdentity: String? = nil, port: UInt16 = 45861) throws {
         let fm = FileManager.default
         self.port = port
         root = try directory ?? fm.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true).appendingPathComponent("AhnaMobileHost", isDirectory: true)
@@ -618,7 +618,7 @@ private final class MobileHTTPRequest {
             let entry = pointer.pointee
             guard let address = entry.ifa_addr, address.pointee.sa_family == UInt8(AF_INET), entry.ifa_flags & UInt32(IFF_LOOPBACK) == 0, entry.ifa_flags & UInt32(IFF_UP) != 0 else { continue }
             var host = [CChar](repeating: 0, count: Int(NI_MAXHOST))
-            if getnameinfo(address, socklen_t(address.pointee.sa_len), &host, socklen_t(host.count), nil, 0, NI_NUMERICHOST) == 0 { result.append("http://\(String(cString: host)):45851") }
+            if getnameinfo(address, socklen_t(address.pointee.sa_len), &host, socklen_t(host.count), nil, 0, NI_NUMERICHOST) == 0 { result.append("http://\(String(cString: host)):45861") }
         }; return result
     }
     init() {

@@ -2,12 +2,12 @@ import Foundation
 import CoreBluetooth
 
 // 아나 — 근처 기기(Bluetooth LE) 라디오. 본체 앱과 공유 메뉴가 함께 씁니다.
-// 규약: 서비스 A4A10001-…, card(읽기) A4A10002-…, inbox(쓰기, 응답 있음, ≤512바이트) A4A10003-…
+// 규약: 서비스 A4A20001-…, card(읽기) A4A20002-…, inbox(쓰기, 응답 있음, ≤512바이트) A4A20003-…
 
 enum NearbyUUID {
-    static let serviceID = "A4A10001-4B2C-4F6D-9E3A-5C8B2D1F0A61"
-    static let cardID = "A4A10002-4B2C-4F6D-9E3A-5C8B2D1F0A61"
-    static let inboxID = "A4A10003-4B2C-4F6D-9E3A-5C8B2D1F0A61"
+    static let serviceID = "A4A20001-4B2C-4F6D-9E3A-5C8B2D1F0A61"
+    static let cardID = "A4A20002-4B2C-4F6D-9E3A-5C8B2D1F0A61"
+    static let inboxID = "A4A20003-4B2C-4F6D-9E3A-5C8B2D1F0A61"
     static var service: CBUUID { CBUUID(string: serviceID) }
     static var card: CBUUID { CBUUID(string: cardID) }
     static var inbox: CBUUID { CBUUID(string: inboxID) }

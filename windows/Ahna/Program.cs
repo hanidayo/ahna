@@ -75,7 +75,7 @@ internal static class Program
 		}
 		bool flag = args.Contains("--ui-test");
 		bool createdNew;
-		using (new Mutex(initiallyOwned: true, flag ? "Local\\Ahna.UITest" : "Local\\Ahna.v1", out createdNew))
+		using (new Mutex(initiallyOwned: true, flag ? "Local\\AhnaOpen.UITest" : "Local\\AhnaOpen.v1", out createdNew))
 		{
 			if (!createdNew)
 			{
@@ -97,7 +97,7 @@ internal static class Program
 			}
 			catch (Exception ex)
 			{
-				MessageBox.Show("아나를 시작하지 못했습니다. 45851 포트가 사용 중인지 확인하세요.\n\n" + ex.Message, "아나");
+				MessageBox.Show("아나를 시작하지 못했습니다. 45861 포트가 사용 중인지 확인하세요.\n\n" + ex.Message, "아나");
 				return 1;
 			}
 		}

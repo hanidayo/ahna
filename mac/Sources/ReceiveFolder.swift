@@ -24,7 +24,7 @@ enum ReceiveFolder {
     static func metadataURL(for directory: URL, support: URL? = nil) throws -> URL {
         let base = try support ?? FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
         let key = SHA256.hash(data: Data(directory.standardizedFileURL.path.utf8)).map { String(format: "%02x", $0) }.joined()
-        return base.appendingPathComponent("AhnaMac/Receipts/" + key, isDirectory: true)
+        return base.appendingPathComponent("AhnaOpenMac/Receipts/" + key, isDirectory: true)
     }
     static func prepare(_ url: URL, isDefault: Bool) throws {
         if isDefault { try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true) }

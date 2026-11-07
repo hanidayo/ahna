@@ -1,12 +1,12 @@
 ﻿$ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Windows.Forms
-$destination = Join-Path $env:LOCALAPPDATA 'Programs\Ahna'
-$exe = Join-Path $destination 'Ahna.exe'
+$destination = Join-Path $env:LOCALAPPDATA 'Programs\AhnaOpen'
+$exe = Join-Path $destination 'AhnaOpen.exe'
 try {
     $session = (Get-Process -Id $PID).SessionId
-    $running = Get-Process Ahna -ErrorAction SilentlyContinue | Where-Object { $_.SessionId -eq $session }
+    $running = Get-Process AhnaOpen -ErrorAction SilentlyContinue | Where-Object { $_.SessionId -eq $session }
     if ($running) { throw '다른 폴더의 구버전을 포함해 실행 중인 아나를 모두 트레이에서 종료한 뒤 다시 설치해 주세요.' }
-    $fresh = -not (Test-Path -LiteralPath (Join-Path $destination 'Ahna.exe'))
+    $fresh = -not (Test-Path -LiteralPath (Join-Path $destination 'AhnaOpen.exe'))
     New-Item -ItemType Directory -Force -Path $destination | Out-Null
     Copy-Item -Path (Join-Path $PSScriptRoot 'app\*') -Destination $destination -Recurse -Force
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Uninstall.ps1') -Destination (Join-Path $destination 'Uninstall.ps1') -Force
@@ -19,7 +19,7 @@ try {
         # 예전 시험판의 영어 이름 바로가기는 지웁니다.
         $old = Join-Path $folder 'Ahna.lnk'
         if (Test-Path -LiteralPath $old) { Remove-Item -LiteralPath $old -Force -ErrorAction SilentlyContinue }
-        $shortcut = $shell.CreateShortcut((Join-Path $folder '아나.lnk'))
+        $shortcut = $shell.CreateShortcut((Join-Path $folder '아나 Open.lnk'))
         $shortcut.TargetPath = $exe
         $shortcut.Arguments = '--open'
         $shortcut.WorkingDirectory = $destination
@@ -28,11 +28,11 @@ try {
     # Keep previously enabled integrations attached to the installed executable.
     $run = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Software\Microsoft\Windows\CurrentVersion\Run', $true)
     if ($run) {
-        try { if ($run.GetValue('Ahna')) { $run.SetValue('Ahna', ('"' + $exe + '" --background')) } }
+        try { if ($run.GetValue('AhnaOpen')) { $run.SetValue('AhnaOpen', ('"' + $exe + '" --background')) } }
         finally { $run.Dispose() }
     }
-    $fileMenu = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Software\Classes\*\shell\Ahna')
-    $folderMenu = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Software\Classes\Directory\shell\Ahna')
+    $fileMenu = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Software\Classes\*\shell\AhnaOpen')
+    $folderMenu = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Software\Classes\Directory\shell\AhnaOpen')
     # 처음 설치하면 탐색기 우클릭 메뉴 '아나로 보내기'를 켭니다.
     $updateMenu = $fresh -or $null -ne $fileMenu -or $null -ne $folderMenu
     if ($fileMenu) { $fileMenu.Dispose() }; if ($folderMenu) { $folderMenu.Dispose() }

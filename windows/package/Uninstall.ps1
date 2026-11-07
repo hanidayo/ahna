@@ -1,10 +1,10 @@
 ﻿$ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Windows.Forms
-$destination = [IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA 'Programs\Ahna'))
+$destination = [IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA 'Programs\AhnaOpen'))
 $expectedParent = [IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA 'Programs'))
-if ([IO.Path]::GetDirectoryName($destination) -ne $expectedParent -or [IO.Path]::GetFileName($destination) -ne 'Ahna') { throw '안전한 제거 경로가 아닙니다.' }
+if ([IO.Path]::GetDirectoryName($destination) -ne $expectedParent -or [IO.Path]::GetFileName($destination) -ne 'AhnaOpen') { throw '안전한 제거 경로가 아닙니다.' }
 try {
-    if (Get-Process Ahna -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq (Join-Path $destination 'Ahna.exe') }) { throw '아나를 트레이에서 종료한 뒤 다시 제거해 주세요.' }
+    if (Get-Process AhnaOpen -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq (Join-Path $destination 'AhnaOpen.exe') }) { throw '아나를 트레이에서 종료한 뒤 다시 제거해 주세요.' }
     $answer = [System.Windows.Forms.MessageBox]::Show("아나 프로그램과 바로가기를 제거할까요?`n받은 파일, 저장 경로 설정, 전송 기록은 유지됩니다.", '아나 제거', 'YesNo', 'Question')
     if ($answer -ne 'Yes') { exit 0 }
     $sharePackage=Get-AppxPackage -Name 'Ahna.Desktop'
@@ -30,14 +30,14 @@ try {
             if($removed.ExitCode -ne 0){throw '공유 인증서 제거가 완료되지 않았습니다. 관리자 승인을 확인하고 다시 실행해 주세요.'}
         }
     }
-    Remove-ItemProperty -LiteralPath 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'Ahna' -ErrorAction SilentlyContinue
-    foreach ($key in @('HKCU:\Software\Classes\*\shell\Ahna','HKCU:\Software\Classes\Directory\shell\Ahna','HKCU:\Software\Classes\CLSID\{5B8E2A61-3D47-4C19-A0F2-9E64C7D1B3A8}')) {
+    Remove-ItemProperty -LiteralPath 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'AhnaOpen' -ErrorAction SilentlyContinue
+    foreach ($key in @('HKCU:\Software\Classes\*\shell\AhnaOpen','HKCU:\Software\Classes\Directory\shell\AhnaOpen','HKCU:\Software\Classes\CLSID\{9C2F7D44-6A1B-4E83-B5D0-3F8E21C7A6B2}')) {
         if (Test-Path -LiteralPath $key) { Remove-Item -LiteralPath $key -Recurse -Force }
     }
     $shell = New-Object -ComObject WScript.Shell
     foreach ($folder in @([Environment]::GetFolderPath('Desktop'), [Environment]::GetFolderPath('Programs'))) {
-        $link = Join-Path $folder '아나.lnk'
-        if ((Test-Path -LiteralPath $link) -and $shell.CreateShortcut($link).TargetPath -eq (Join-Path $destination 'Ahna.exe')) { Remove-Item -LiteralPath $link -Force }
+        $link = Join-Path $folder '아나 Open.lnk'
+        if ((Test-Path -LiteralPath $link) -and $shell.CreateShortcut($link).TargetPath -eq (Join-Path $destination 'AhnaOpen.exe')) { Remove-Item -LiteralPath $link -Force }
     }
     if (Test-Path -LiteralPath $destination) {
         $item = Get-Item -LiteralPath $destination

@@ -100,7 +100,7 @@ final class Ui {
 
     // ---------- icons ----------
     Drawable iconDrawable(String name, int color) {
-        int id = ctx.getResources().getIdentifier("ic_" + name, "drawable", ctx.getPackageName());
+        int id = ctx.getResources().getIdentifier("ic_" + name, "drawable", "me.ahna");
         if (id == 0) return null;
         Drawable d = ctx.getDrawable(id);
         if (d == null) return null;

@@ -46,15 +46,15 @@ import java.util.UUID;
 
 /**
  * 아나 1.2 근처 기기(Bluetooth LE) — ios/Ahna/Nearby.swift(NearbyRadio)와 같은 규약.
- * 서비스 A4A10001-…, card(읽기) A4A10002-…, inbox(쓰기, 응답 있음, ≤512바이트) A4A10003-…
+ * 서비스 A4A20001-…, card(읽기) A4A20002-…, inbox(쓰기, 응답 있음, ≤512바이트) A4A20003-…
  * 받는 쪽: '10분 동안 모두'일 때만 광고하고 GATT 서비스를 엽니다(앱이 화면에 있을 때만).
  * 보내는 쪽: 앱이 화면에 있고 Bluetooth가 켜져 있으면 서비스 UUID로 찾고, 연결해 card를 읽어 이름을 보여 줍니다.
  * 모든 상태는 전용 스레드(handler) 안에서만 바꿉니다. 알림(Listener)은 그 스레드에서 부르니 화면은 runOnUiThread로 옮기세요.
  */
 final class NearbyRadio {
-    static final UUID SERVICE = UUID.fromString("A4A10001-4B2C-4F6D-9E3A-5C8B2D1F0A61");
-    static final UUID CARD = UUID.fromString("A4A10002-4B2C-4F6D-9E3A-5C8B2D1F0A61");
-    static final UUID INBOX = UUID.fromString("A4A10003-4B2C-4F6D-9E3A-5C8B2D1F0A61");
+    static final UUID SERVICE = UUID.fromString("A4A20001-4B2C-4F6D-9E3A-5C8B2D1F0A61");
+    static final UUID CARD = UUID.fromString("A4A20002-4B2C-4F6D-9E3A-5C8B2D1F0A61");
+    static final UUID INBOX = UUID.fromString("A4A20003-4B2C-4F6D-9E3A-5C8B2D1F0A61");
     static final int MAX_OFFER = 512;
 
     enum State { UNKNOWN, UNSUPPORTED, UNAUTHORIZED, OFF, LOCATION_OFF, ON }

@@ -29,7 +29,7 @@ internal static class ExplorerSend
 		public CommandServerContext()
 		{
 			factory = new ExplorerClassFactory(Deliver);
-			Guid clsid = new Guid("{5B8E2A61-3D47-4C19-A0F2-9E64C7D1B3A8}");
+			Guid clsid = new Guid("{9C2F7D44-6A1B-4E83-B5D0-3F8E21C7A6B2}");
 			Marshal.ThrowExceptionForHR(CoRegisterClassObject(ref clsid, factory, 4u, 1u, out cookie));
 			idle.Tick += (object? _, EventArgs _) =>
 			{
@@ -48,9 +48,9 @@ internal static class ExplorerSend
 			try
 			{
 				using CancellationTokenSource cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(35L));
-				if (!Mutex.TryOpenExisting("Local\\Ahna.v1", out Mutex result))
+				if (!Mutex.TryOpenExisting("Local\\AhnaOpen.v1", out Mutex result))
 				{
-					Process.Start(new ProcessStartInfo(Path.Combine(AppContext.BaseDirectory, "Ahna.exe"))
+					Process.Start(new ProcessStartInfo(Path.Combine(AppContext.BaseDirectory, "AhnaOpen.exe"))
 					{
 						UseShellExecute = false,
 						CreateNoWindow = true,
@@ -103,11 +103,11 @@ internal static class ExplorerSend
 		}
 	}
 
-	public const string ClassId = "{5B8E2A61-3D47-4C19-A0F2-9E64C7D1B3A8}";
+	public const string ClassId = "{9C2F7D44-6A1B-4E83-B5D0-3F8E21C7A6B2}";
 
-	public const string ClassPath = "Software\\Classes\\CLSID\\{5B8E2A61-3D47-4C19-A0F2-9E64C7D1B3A8}";
+	public const string ClassPath = "Software\\Classes\\CLSID\\{9C2F7D44-6A1B-4E83-B5D0-3F8E21C7A6B2}";
 
-	public static readonly string[] VerbPaths = new string[2] { "Software\\Classes\\*\\shell\\Ahna", "Software\\Classes\\Directory\\shell\\Ahna" };
+	public static readonly string[] VerbPaths = new string[2] { "Software\\Classes\\*\\shell\\AhnaOpen", "Software\\Classes\\Directory\\shell\\AhnaOpen" };
 
 	public static void Register(string exe, bool enabled)
 	{
@@ -125,16 +125,16 @@ internal static class ExplorerSend
 			registryKey.SetValue("MultiSelectModel", "Player");
 			using RegistryKey registryKey2 = registryKey.CreateSubKey("command");
 			registryKey2.SetValue("", "");
-			registryKey2.SetValue("DelegateExecute", "{5B8E2A61-3D47-4C19-A0F2-9E64C7D1B3A8}");
+			registryKey2.SetValue("DelegateExecute", "{9C2F7D44-6A1B-4E83-B5D0-3F8E21C7A6B2}");
 		}
 		if (enabled)
 		{
-			using RegistryKey registryKey3 = Registry.CurrentUser.CreateSubKey("Software\\Classes\\CLSID\\{5B8E2A61-3D47-4C19-A0F2-9E64C7D1B3A8}\\LocalServer32");
+			using RegistryKey registryKey3 = Registry.CurrentUser.CreateSubKey("Software\\Classes\\CLSID\\{9C2F7D44-6A1B-4E83-B5D0-3F8E21C7A6B2}\\LocalServer32");
 			registryKey3.SetValue("", "\"" + exe + "\" --explorer-command");
 		}
 		else
 		{
-			Registry.CurrentUser.DeleteSubKeyTree("Software\\Classes\\CLSID\\{5B8E2A61-3D47-4C19-A0F2-9E64C7D1B3A8}", throwOnMissingSubKey: false);
+			Registry.CurrentUser.DeleteSubKeyTree("Software\\Classes\\CLSID\\{9C2F7D44-6A1B-4E83-B5D0-3F8E21C7A6B2}", throwOnMissingSubKey: false);
 		}
 		SHChangeNotify(134217728u, 0u, IntPtr.Zero, IntPtr.Zero);
 	}

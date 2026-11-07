@@ -122,7 +122,7 @@ final class AppUpdater: ObservableObject {
             TARGET=\(shellQuote(target.path))
             NEW=\(shellQuote(newApp.path))
             # 예전 이름(아나.app)으로 설치돼 있어도 영문 폴더(Ahna.app)로 옮겨 설치합니다(한글 경로에서는 공유 확장이 실행되지 않음).
-            DEST="$(dirname "$TARGET")/Ahna.app"
+            DEST="$(dirname "$TARGET")/AhnaOpen.app"
             BACKUP="${TARGET%.app}-backup-$(date +%s).app"
             trap '/usr/bin/open "$DEST" 2>/dev/null || /usr/bin/open "$TARGET" 2>/dev/null || /usr/bin/open "$BACKUP"' EXIT
             mv "$TARGET" "$BACKUP"

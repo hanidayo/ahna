@@ -53,9 +53,9 @@ struct GuestTicketSnapshot: Sendable, Equatable {
 }
 
 enum NearbyUUID {
-    static let serviceID = "A4A10001-4B2C-4F6D-9E3A-5C8B2D1F0A61"
-    static let cardID = "A4A10002-4B2C-4F6D-9E3A-5C8B2D1F0A61"
-    static let inboxID = "A4A10003-4B2C-4F6D-9E3A-5C8B2D1F0A61"
+    static let serviceID = "A4A20001-4B2C-4F6D-9E3A-5C8B2D1F0A61"
+    static let cardID = "A4A20002-4B2C-4F6D-9E3A-5C8B2D1F0A61"
+    static let inboxID = "A4A20003-4B2C-4F6D-9E3A-5C8B2D1F0A61"
     static var service: CBUUID { CBUUID(string: serviceID) }
     static var card: CBUUID { CBUUID(string: cardID) }
     static var inbox: CBUUID { CBUUID(string: inboxID) }

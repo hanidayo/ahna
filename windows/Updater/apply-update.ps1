@@ -14,12 +14,12 @@ try {
     $expectedParent = [IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA 'Programs'))
     $dest = [IO.Path]::GetFullPath($Destination)
     if ([IO.Path]::GetDirectoryName($dest) -ne $expectedParent) { throw "설치 폴더가 예상 위치가 아닙니다: $dest" }
-    if (-not (Test-Path -LiteralPath (Join-Path $Source 'Ahna.exe'))) { throw '새 패키지에 Ahna.exe가 없습니다.' }
+    if (-not (Test-Path -LiteralPath (Join-Path $Source 'AhnaOpen.exe'))) { throw '새 패키지에 AhnaOpen.exe가 없습니다.' }
 
     # 1) 실행 중인 아나가 종료되기를 최대 60초 기다립니다.
     try { Wait-Process -Id $ProcessId -Timeout 60 -ErrorAction SilentlyContinue } catch {}
-    $exe = Join-Path $dest 'Ahna.exe'
-    $others = Get-Process Ahna -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $exe }
+    $exe = Join-Path $dest 'AhnaOpen.exe'
+    $others = Get-Process AhnaOpen -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $exe }
     if ($others) { $others | Stop-Process -Force; Start-Sleep -Seconds 2 }
 
     # 2) 현재 설치본을 백업한 뒤 새 파일을 복사합니다. 실패하면 백업에서 복원합니다.
@@ -35,7 +35,7 @@ try {
     }
 
     # 3) 탐색기 우클릭 메뉴가 등록돼 있으면 새 실행 파일로 다시 등록합니다.
-    if ((Test-Path -LiteralPath 'HKCU:\Software\Classes\*\shell\Ahna') -or (Test-Path -LiteralPath 'HKCU:\Software\Classes\Directory\shell\Ahna')) {
+    if ((Test-Path -LiteralPath 'HKCU:\Software\Classes\*\shell\AhnaOpen') -or (Test-Path -LiteralPath 'HKCU:\Software\Classes\Directory\shell\AhnaOpen')) {
         $p = Start-Process -FilePath $exe -ArgumentList '--register-explorer' -WorkingDirectory $dest -WindowStyle Hidden -Wait -PassThru
         Log "우클릭 메뉴 재등록 종료 코드: $($p.ExitCode)"
     }
@@ -49,7 +49,7 @@ try {
     try {
         Add-Type -AssemblyName System.Windows.Forms
         [System.Windows.Forms.MessageBox]::Show("아나 업데이트에 실패했습니다.`n$($_.Exception.Message)`n`n기존 버전을 다시 실행합니다. 로그: $log", '아나 업데이트') | Out-Null
-        $old = Join-Path $Destination 'Ahna.exe'
+        $old = Join-Path $Destination 'AhnaOpen.exe'
         if (Test-Path -LiteralPath $old) { Start-Process -FilePath $old -ArgumentList '--background' }
     } catch {}
     exit 1

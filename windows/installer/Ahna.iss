@@ -8,12 +8,12 @@
 #endif
 
 [Setup]
-AppId={{5B8E2A61-3D47-4C19-A0F2-9E64C7D1B3A9}
+AppId={{9C2F7D44-6A1B-4E83-B5D0-3F8E21C7A6B3}
 AppName=아나
 AppVerName=아나 {#AppVersion}
 AppVersion={#AppVersion}
-AppPublisher=Hanidayo
-DefaultDirName={localappdata}\Programs\Ahna
+AppPublisher=Ahna Open
+DefaultDirName={localappdata}\Programs\AhnaOpen
 DisableDirPage=yes
 DisableProgramGroupPage=yes
 DisableReadyPage=yes
@@ -22,7 +22,7 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputBaseFilename=Ahna-Setup
 SetupIconFile=..\app.ico
-UninstallDisplayIcon={app}\Ahna.exe
+UninstallDisplayIcon={app}\AhnaOpen.exe
 UninstallDisplayName=아나
 Compression=lzma2/max
 SolidCompression=yes
@@ -41,19 +41,19 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
 
 [Icons]
-Name: "{userdesktop}\아나"; Filename: "{app}\Ahna.exe"; Parameters: "--open"; WorkingDir: "{app}"
-Name: "{userprograms}\아나"; Filename: "{app}\Ahna.exe"; Parameters: "--open"; WorkingDir: "{app}"
+Name: "{userdesktop}\아나 Open"; Filename: "{app}\AhnaOpen.exe"; Parameters: "--open"; WorkingDir: "{app}"
+Name: "{userprograms}\아나 Open"; Filename: "{app}\AhnaOpen.exe"; Parameters: "--open"; WorkingDir: "{app}"
 
 [Registry]
 ; 앱이 만드는 항목 — 제거할 때 함께 지웁니다(설치 때 새로 만들지는 않음).
-Root: HKCU; Subkey: "Software\Classes\*\shell\Ahna"; Flags: uninsdeletekey dontcreatekey
-Root: HKCU; Subkey: "Software\Classes\Directory\shell\Ahna"; Flags: uninsdeletekey dontcreatekey
-Root: HKCU; Subkey: "Software\Classes\CLSID\{{5B8E2A61-3D47-4C19-A0F2-9E64C7D1B3A8}"; Flags: uninsdeletekey dontcreatekey
-Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: none; ValueName: "Ahna"; Flags: uninsdeletevalue dontcreatekey
+Root: HKCU; Subkey: "Software\Classes\*\shell\AhnaOpen"; Flags: uninsdeletekey dontcreatekey
+Root: HKCU; Subkey: "Software\Classes\Directory\shell\AhnaOpen"; Flags: uninsdeletekey dontcreatekey
+Root: HKCU; Subkey: "Software\Classes\CLSID\{{9C2F7D44-6A1B-4E83-B5D0-3F8E21C7A6B2}"; Flags: uninsdeletekey dontcreatekey
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: none; ValueName: "AhnaOpen"; Flags: uninsdeletevalue dontcreatekey
 
 [Run]
-Filename: "{app}\Ahna.exe"; Parameters: "--register-explorer"; Flags: runhidden waituntilterminated
-Filename: "{app}\Ahna.exe"; Parameters: "--open"; Description: "아나 실행"; Flags: nowait postinstall
+Filename: "{app}\AhnaOpen.exe"; Parameters: "--register-explorer"; Flags: runhidden waituntilterminated
+Filename: "{app}\AhnaOpen.exe"; Parameters: "--open"; Description: "아나 실행"; Flags: nowait postinstall
 
 [InstallDelete]
 ; 예전 압축 파일 설치가 만든 영어 이름 바로가기

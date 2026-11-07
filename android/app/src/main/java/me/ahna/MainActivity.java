@@ -162,7 +162,7 @@ public class MainActivity extends Activity {
             server.guestHtml = asset("guest.html");
             server.guestGoneHtml = asset("guest-gone.html");
             server.guestListener = nearby;
-            server.start(45851);
+            server.start(45861);
             showAddresses();
             if (!prefs.getString("nasKey", "").isEmpty()) try { startRelay(); } catch (Exception e) { setRelayText(e.getMessage()); }
             else handler.postDelayed(this::editNas, 400);   // 처음 실행: 초대 코드로 가입
@@ -638,7 +638,7 @@ public class MainActivity extends Activity {
         card.setBackground(ui.round(ui.surface, 14, ui.border, 1));
         card.setPadding(dp(14), dp(12), dp(14), dp(12));
         android.widget.ImageView logo = new android.widget.ImageView(this);
-        logo.setImageResource(getResources().getIdentifier("ahna", "drawable", getPackageName()));
+        logo.setImageResource(getResources().getIdentifier("ahna", "drawable", "me.ahna"));
         card.addView(logo, new LinearLayout.LayoutParams(dp(36), dp(36)));
         LinearLayout t = ui.column();
         t.addView(ui.text("아나", 16, ui.text, Ui.BOLD));

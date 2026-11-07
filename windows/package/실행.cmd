@@ -1,2 +1,2 @@
 @echo off
-start "" "%~dp0app\Ahna.exe" --open
+start "" "%~dp0app\AhnaOpen.exe" --open

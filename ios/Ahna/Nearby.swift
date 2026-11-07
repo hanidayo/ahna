@@ -5,7 +5,7 @@ import UIKit
 import UniformTypeIdentifiers
 
 // 아나 1.2 — 근처 기기(Bluetooth LE) & QR 공유
-// 규약: 서비스 A4A10001-…, card(읽기) A4A10002-…, inbox(쓰기, 응답 있음, ≤512바이트) A4A10003-…
+// 규약: 서비스 A4A20001-…, card(읽기) A4A20002-…, inbox(쓰기, 응답 있음, ≤512바이트) A4A20003-…
 // 받는 쪽: '10분 동안 모두'일 때만 광고하고 GATT 서비스를 엽니다(앱이 화면에 있을 때만).
 // 보내는 쪽: 앱이 화면에 있고 Bluetooth가 켜져 있으면 서비스 UUID로 찾고, 연결해 card를 읽어 이름을 보여 줍니다.
 

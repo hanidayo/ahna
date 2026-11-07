@@ -6,7 +6,7 @@
 // 2. 새 버전이 있으면 Notify로 알립니다. 사용자가 알림을 누르거나 트레이의 [업데이트 확인]에서
 //    설치하면 ZIP을 받아 SHA-256을 확인하고 %TEMP%에 풉니다.
 // 3. apply-update.ps1(내장 리소스)을 실행하고 앱을 종료합니다. 스크립트가 종료를 기다린 뒤
-//    %LOCALAPPDATA%\Programs\Ahna를 교체하고 아나를 다시 실행합니다.
+//    %LOCALAPPDATA%\Programs\AhnaOpen를 교체하고 아나를 다시 실행합니다.
 //    설정·연결·기록은 %LOCALAPPDATA%\Ahna에 있어 그대로 유지됩니다.
 
 using System.Diagnostics;
@@ -124,7 +124,7 @@ public sealed class UpdateService : IDisposable
             await Task.Run(() => ZipFile.ExtractToDirectory(zip, extracted));
             var app = Directory.GetDirectories(extracted, "app", SearchOption.AllDirectories).FirstOrDefault()
                       ?? throw new InvalidDataException("패키지에 app 폴더가 없습니다.");
-            if (!File.Exists(Path.Combine(app, "Ahna.exe"))) throw new InvalidDataException("패키지에 Ahna.exe가 없습니다.");
+            if (!File.Exists(Path.Combine(app, "AhnaOpen.exe"))) throw new InvalidDataException("패키지에 AhnaOpen.exe가 없습니다.");
 
             var script = Path.Combine(work, "apply-update.ps1");
             await using (var res = typeof(UpdateService).Assembly.GetManifestResourceStream("Ahna.Update.apply-update.ps1")

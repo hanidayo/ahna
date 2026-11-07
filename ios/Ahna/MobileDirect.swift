@@ -5,7 +5,7 @@ import Security
 /// 같은 네트워크 직접 받기: 공유기 안에서 들어오는 직접 연결(DirectLink.swift 형식)을 받아
 /// 이 기기의 아나(127.0.0.1)로 넘깁니다. Windows·Mac은 src/DirectChannel.cs 의 DirectHost가 같은 일을 합니다.
 final class MobileDirectHost: @unchecked Sendable {
-    static let port: UInt16 = 45853
+    static let port: UInt16 = 45863
     private final class Key {
         let id: String; let secret: Data; let token: String; let created: Date
         /// 이미 쓴 salt: 같은 연결 내용을 다시 보내는(재전송) 것을 막습니다.

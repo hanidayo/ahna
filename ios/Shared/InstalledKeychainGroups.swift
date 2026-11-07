@@ -43,7 +43,7 @@ enum InstalledKeychainGroups {
     }
     static func select(configured: String, groups: [String]) throws -> String {
         if groups.contains(configured) { return configured }
-        let shared = groups.filter { $0.hasSuffix(".com.hanidayo.ahna.shared") }
+        let shared = groups.filter { $0.hasSuffix(".io.ahna.open.shared") }
         if shared.count == 1 { return shared[0] }
         // iLoader can sign both bundles with the profile's literal TEAM.* group.
         // Never use an arbitrary private default group: that splits settings.

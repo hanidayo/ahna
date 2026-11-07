@@ -11,7 +11,7 @@ namespace Ahna;
 /// </summary>
 internal static class AppIdentity
 {
-	public static string Id => "Hanidayo." + Path.GetFileNameWithoutExtension(Environment.ProcessPath ?? "아나");
+	public static string Id => "AhnaOpen." + Path.GetFileNameWithoutExtension(Environment.ProcessPath ?? "아나");
 
 	public static void Apply()
 	{
@@ -23,7 +23,7 @@ internal static class AppIdentity
 	{
 		string exe = Environment.ProcessPath ?? "";
 		if (exe.Length == 0) return;
-		string path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Programs), "아나.lnk");
+		string path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Programs), "아나 Open.lnk");
 		if (!File.Exists(path)) return;
 		var link = (IShellLinkW)new CShellLink();
 		var file = (IPersistFile)link;

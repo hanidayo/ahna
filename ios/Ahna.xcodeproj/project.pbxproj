@@ -324,7 +324,7 @@
       "buildSettings" = {
         "IPHONEOS_DEPLOYMENT_TARGET" = "17.0";
         "SWIFT_VERSION" = "5.0";
-        "PRODUCT_BUNDLE_IDENTIFIER" = "com.hanidayo.ahna";
+        "PRODUCT_BUNDLE_IDENTIFIER" = "io.ahna.open";
         "PRODUCT_NAME" = "$(TARGET_NAME)";
         "INFOPLIST_FILE" = "Ahna/Info.plist";
         "GENERATE_INFOPLIST_FILE" = "NO";
@@ -340,7 +340,7 @@
       "buildSettings" = {
         "IPHONEOS_DEPLOYMENT_TARGET" = "17.0";
         "SWIFT_VERSION" = "5.0";
-        "PRODUCT_BUNDLE_IDENTIFIER" = "com.hanidayo.ahna";
+        "PRODUCT_BUNDLE_IDENTIFIER" = "io.ahna.open";
         "PRODUCT_NAME" = "$(TARGET_NAME)";
         "INFOPLIST_FILE" = "Ahna/Info.plist";
         "GENERATE_INFOPLIST_FILE" = "NO";
@@ -363,7 +363,7 @@
       "buildSettings" = {
         "IPHONEOS_DEPLOYMENT_TARGET" = "17.0";
         "SWIFT_VERSION" = "5.0";
-        "PRODUCT_BUNDLE_IDENTIFIER" = "com.hanidayo.ahna.share";
+        "PRODUCT_BUNDLE_IDENTIFIER" = "io.ahna.open.share";
         "PRODUCT_NAME" = "$(TARGET_NAME)";
         "INFOPLIST_FILE" = "AhnaShare/Info.plist";
         "GENERATE_INFOPLIST_FILE" = "NO";
@@ -380,7 +380,7 @@
       "buildSettings" = {
         "IPHONEOS_DEPLOYMENT_TARGET" = "17.0";
         "SWIFT_VERSION" = "5.0";
-        "PRODUCT_BUNDLE_IDENTIFIER" = "com.hanidayo.ahna.share";
+        "PRODUCT_BUNDLE_IDENTIFIER" = "io.ahna.open.share";
         "PRODUCT_NAME" = "$(TARGET_NAME)";
         "INFOPLIST_FILE" = "AhnaShare/Info.plist";
         "GENERATE_INFOPLIST_FILE" = "NO";

@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>AhnaKeychainGroup</key>
-	<string>$(AppIdentifierPrefix)com.hanidayo.ahna.shared</string>
+	<string>$(AppIdentifierPrefix)io.ahna.open.shared</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>ko</string>
 	<key>CFBundleDisplayName</key>

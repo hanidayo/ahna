@@ -9,9 +9,9 @@ internal static class WindowsIntegration
 {
 	private const string RunPath = "Software\\Microsoft\\Windows\\CurrentVersion\\Run";
 
-	private const string RunValue = "Ahna";
+	private const string RunValue = "AhnaOpen";
 
-	private const string FileMenu = "Software\\Classes\\*\\shell\\Ahna";
+	private const string FileMenu = "Software\\Classes\\*\\shell\\AhnaOpen";
 
 	public static TransferServer.IntegrationState Read()
 	{

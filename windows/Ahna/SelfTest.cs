@@ -35,7 +35,7 @@ internal static class SelfTest
 		try
 		{
 			Check(OutboundDevices.Endpoint("https://ahna.example", "/api/state").Scheme == "https", "Direct device client accepts 서버 HTTPS origin");
-			string[] array = new string[6] { "http://192.168.0.20:45851", "http://public.example", "https://user:password@ahna.example", "https://ahna.example/path", "https://ahna.example?query=1", "https://ahna.example#fragment" };
+			string[] array = new string[6] { "http://192.168.0.20:45861", "http://public.example", "https://user:password@ahna.example", "https://ahna.example/path", "https://ahna.example?query=1", "https://ahna.example#fragment" };
 			foreach (string text in array)
 			{
 				bool ok = false;

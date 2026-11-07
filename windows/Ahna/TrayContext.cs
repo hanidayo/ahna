@@ -82,7 +82,7 @@ internal sealed class TrayContext : ApplicationContext
 		{
 			testIndex = Array.IndexOf(args, "--integration-test");
 		}
-		string data = ((testIndex >= 0) ? Path.GetFullPath(args[testIndex + 1]) : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Ahna"));
+		string data = ((testIndex >= 0) ? Path.GetFullPath(args[testIndex + 1]) : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AhnaOpen"));
 		testLog = ((testIndex >= 0) ? Path.Combine(data, "ui-events.log") : null);
 		if (testIndex < 0)
 		{
@@ -94,7 +94,7 @@ internal sealed class TrayContext : ApplicationContext
 			{
 			}
 		}
-		server = new TransferServer(data, flag ? 45852 : 45851);
+		server = new TransferServer(data, flag ? 45862 : 45861);
 		server.AppVersion = Ahna.Update.UpdateService.CurrentText;
 		outbound = new OutboundDevices(server, data);
 		nearby = new NearbyService(server, data);
@@ -600,7 +600,7 @@ internal sealed class TrayContext : ApplicationContext
 		{
 			try
 			{
-				await using NamedPipeServerStream pipe = new NamedPipeServerStream("Ahna.v1", PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+				await using NamedPipeServerStream pipe = new NamedPipeServerStream("AhnaOpen.v1", PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
 				await pipe.WaitForConnectionAsync(cancellation);
 				using StreamReader reader = new StreamReader(pipe, null, detectEncodingFromByteOrderMarks: true, -1, leaveOpen: true);
 				using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellation);

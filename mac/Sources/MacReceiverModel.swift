@@ -53,12 +53,12 @@ struct MacReceiverDevice: Identifiable, Equatable {
         do {
             let folder = try receiverFolder()
             savePath = folder.path
-            let data = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true).appendingPathComponent("아나/Receiver", isDirectory: true).resolvingSymlinksInPath()
+            let data = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true).appendingPathComponent("AhnaOpen/Receiver", isDirectory: true).resolvingSymlinksInPath()
             try FileManager.default.createDirectory(at: data, withIntermediateDirectories: true)
             guard let resources = Bundle.main.resourceURL else { throw CocoaError(.fileNoSuchFile) }
             let executable = resources.appendingPathComponent("Backend/" + Self.runtimeID + "/Ahna.MacReceiver")
             guard FileManager.default.isExecutableFile(atPath: executable.path) else {
-                message = "수신 구성요소가 없습니다. Mac에서 Mac앱만들기.command로 다시 빌드해 주세요."; return
+                message = "수신 구성요소가 없습니다. 앱을 다시 설치해 주세요."; return
             }
             let child = Process(); let incoming = Pipe(); let outgoing = Pipe()
             child.executableURL = executable; child.currentDirectoryURL = data
@@ -342,7 +342,7 @@ struct MacReceiverDevice: Identifiable, Equatable {
         return try cachedReceiverKey!.get()
     }
     private func readReceiverKey() throws -> Data {
-        let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: "Ahna.MacReceiver", kSecAttrAccount as String: "configuration-encryption-key"]
+        let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: "AhnaOpen.MacReceiver", kSecAttrAccount as String: "configuration-encryption-key"]
         var lookup = query; lookup[kSecReturnData as String] = true
         var result: CFTypeRef?; let status = SecItemCopyMatching(lookup as CFDictionary, &result)
         if status == errSecSuccess, let data = result as? Data, data.count == 32 { return data }

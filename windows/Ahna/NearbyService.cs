@@ -20,18 +20,18 @@ namespace Ahna;
 internal sealed record NearbyOffer(string Name, string Platform, string Code, int Count, long Bytes, string Summary, string Url, string? Proximity);
 
 /// <summary>
-/// 1.2 근처 기기 (Bluetooth LE). 공통 규약: 서비스 A4A10001-…, card(읽기) A4A10002-…, inbox(응답 있는 쓰기, ≤512바이트) A4A10003-….
+/// 1.2 근처 기기 (Bluetooth LE). 공통 규약: 서비스 A4A20001-…, card(읽기) A4A20002-…, inbox(응답 있는 쓰기, ≤512바이트) A4A20003-….
 /// 보내는 쪽: 서비스 UUID로 찾아 card를 읽고(기기별 캐시), RSSI로 거리를 보여 줍니다. 고르면 kind=send 티켓을 만들어 inbox에 offer를 씁니다.
 /// 받는 쪽: '10분 동안 모두'인 동안에만 광고하고 GATT 서비스(card, inbox)를 엽니다. offer가 오면 확인 창(TrayContext)을 띄웁니다.
 /// 파일 자체는 Bluetooth가 아니라 서버 중계의 1회용 링크(/s/…)로 오갑니다.
 /// </summary>
 internal sealed class NearbyService : TransferServer.INearbyHost, IDisposable
 {
-	public static readonly Guid ServiceUuid = new Guid("A4A10001-4B2C-4F6D-9E3A-5C8B2D1F0A61");
+	public static readonly Guid ServiceUuid = new Guid("A4A20001-4B2C-4F6D-9E3A-5C8B2D1F0A61");
 
-	public static readonly Guid CardUuid = new Guid("A4A10002-4B2C-4F6D-9E3A-5C8B2D1F0A61");
+	public static readonly Guid CardUuid = new Guid("A4A20002-4B2C-4F6D-9E3A-5C8B2D1F0A61");
 
-	public static readonly Guid InboxUuid = new Guid("A4A10003-4B2C-4F6D-9E3A-5C8B2D1F0A61");
+	public static readonly Guid InboxUuid = new Guid("A4A20003-4B2C-4F6D-9E3A-5C8B2D1F0A61");
 
 	public const int MaxOfferBytes = 512;
 

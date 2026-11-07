@@ -13,7 +13,7 @@ tools=next((p.parent for p in sdk.rglob('aapt2'+suffix) if p.parent.name=='35.0.
 env=os.environ.copy();env['JAVA_HOME']=str(jdk);env['PATH']=str(jdk/'bin')+os.pathsep+env.get('PATH','')
 def run(args):subprocess.run([os.path.relpath(x) if isinstance(x,pathlib.Path) else str(x) for x in args],check=True,env=env)
 run([tools/('aapt2'+suffix),'compile','--dir',root/'app/src/main/res','-o',build/'resources.zip'])
-run([tools/('aapt2'+suffix),'link','-o',build/'base.apk','-I',android,'--manifest',root/'app/src/main/AndroidManifest.xml','--min-sdk-version','29','--target-sdk-version','35','--version-code','30500','--version-name','1.5','-A',root/'app/src/main/assets',build/'resources.zip'])
+run([tools/('aapt2'+suffix),'link','-o',build/'base.apk','-I',android,'--manifest',root/'app/src/main/AndroidManifest.xml','--rename-manifest-package','me.ahna.open','--min-sdk-version','29','--target-sdk-version','35','--version-code','30500','--version-name','1.5','-A',root/'app/src/main/assets',build/'resources.zip'])
 classes=build/'classes'
 assert classes.resolve().is_relative_to((root/'app/build').resolve())
 if classes.exists():shutil.rmtree(classes)

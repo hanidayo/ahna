@@ -25,7 +25,7 @@ namespace Ahna;
 //   받는 쪽 첫 레코드 {"s":상태 코드,"l":본문 길이} → 본문 레코드들
 public static class DirectWire
 {
-    public const int FirstPort = 45853;
+    public const int FirstPort = 45863;
     public const int RecordSize = 1 << 20;
     /// 레코드 하나를 주고받는 최대 시간. 상대가 사라지면 이만큼 뒤에 끊습니다.
     public static readonly TimeSpan Idle = TimeSpan.FromSeconds(60);
