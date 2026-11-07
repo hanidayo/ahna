@@ -2,6 +2,7 @@
 name: server-smoke
 on:
   workflow_dispatch:
+  workflow_call:
   push:
     branches: [main]
     paths: [server/**, scripts/server_smoke.py, .github/workflows/server-smoke.yml]

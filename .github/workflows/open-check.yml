@@ -1,0 +1,15 @@
+# 공개판 빌드 확인용(임시, 이 브랜치에만 있음)
+name: open-check
+on:
+  push:
+    branches: [open-edition-check]
+permissions:
+  contents: write
+jobs:
+  build:
+    uses: ./.github/workflows/release.yml
+    with:
+      version: "1.0"
+      publish: "false"
+  smoke:
+    uses: ./.github/workflows/server-smoke.yml
