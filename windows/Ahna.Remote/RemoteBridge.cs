@@ -108,7 +108,7 @@ public sealed class RemoteBridge : IAsyncDisposable
 	{
 		if (!Uri.TryCreate(config.Url.Trim(), UriKind.Absolute, out Uri result) || (result.Scheme != "https" && (!testHttp || !(result.Scheme == "http") || !result.IsLoopback)) || result.AbsolutePath != "/" || result.Query.Length > 0 || result.Fragment.Length > 0 || result.UserInfo.Length > 0)
 		{
-			throw new ArgumentException("서버 주소는 경로 없는 HTTPS 주소로 입력하세요. 예: https://ahna.example.synology.me");
+			throw new ArgumentException("서버 주소는 경로 없는 HTTPS 주소로 입력하세요. 예: https://ahna.example.com");
 		}
 		if (!Brand.IsMemberToken(config.Key) && (config.Key.Length < 64 || !config.Key.All(Uri.IsHexDigit)))
 		{

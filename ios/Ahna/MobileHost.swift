@@ -604,7 +604,9 @@ private final class MobileHTTPRequest {
     @Published var status = "서버 수신 준비 중…"
     @Published var active = false
     @Published var remoteStatus = "서버 설정이 필요합니다."
-    @Published var nasAddress = Brand.ahna ? Brand.server : UserDefaults.standard.string(forKey: "mobileNasURL") ?? ""
+    @Published var nasAddress = Brand.server.isEmpty ? UserDefaults.standard.string(forKey: "mobileNasURL") ?? "" : Brand.server
+    /// 첫 화면·서버 설정에서 입력 중인 서버 주소
+    @Published var serverDraft = Brand.server.isEmpty ? UserDefaults.standard.string(forKey: "mobileNasURL") ?? "" : Brand.server
     @Published var nasKey = ""
     private(set) var engine: MobileHTTPHost?
     private var direct: MobileDirectHost?
@@ -697,12 +699,13 @@ private final class MobileHTTPRequest {
         engine?.prepare(files, target: target) { [weak self] result in Task { @MainActor in self?.status = result; completion() } }
     }
     /// 아나: 아직 서버에 가입하지 않았으면 첫 화면에서 초대 코드를 묻습니다.
-    @Published var needsJoin = Brand.ahna && !Brand.isMemberToken(String(decoding: (try? MobileHTTPHost.secret("nas-key")) ?? Data(), as: UTF8.self))
+    @Published var needsJoin = Brand.ahna && (Brand.server.isEmpty || !Brand.isMemberToken(String(decoding: (try? MobileHTTPHost.secret("nas-key")) ?? Data(), as: UTF8.self)))
     @Published var joining = false
     /// 아나 서버 가입: 초대 코드 → 이 기기 전용 토큰. 토큰은 키체인에 저장하고 바로 서버에 연결합니다.
     func join(invite: String) async {
         let code = invite.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !code.isEmpty, let engine, let url = URL(string: Brand.server + "/_ahna/join") else { return }
+        guard let server = Brand.normalizeServer(serverDraft) else { remoteStatus = "서버 주소가 올바르지 않습니다. 예: https://ahna.example.com"; return }
+        guard !code.isEmpty, let engine, let url = URL(string: server + "/_ahna/join") else { return }
         joining = true; defer { joining = false }
         var request = URLRequest(url: url); request.httpMethod = "POST"; request.timeoutInterval = 20
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -714,8 +717,9 @@ private final class MobileHTTPRequest {
             if status == 404 { remoteStatus = "서버에 초대 코드가 설정되지 않았습니다. 서버 관리자에게 알려 주세요."; return }
             if status == 429 { remoteStatus = "초대 코드를 너무 많이 시도했습니다. 10분 뒤에 다시 시도하세요."; return }
             guard status == 200, let token = body?["token"] as? String, Brand.isMemberToken(token) else { remoteStatus = (body?["error"] as? String) ?? "연결하지 못했습니다 (\(status))."; return }
-            nasAddress = Brand.server; nasKey = token; configureNAS(); needsJoin = false
-        } catch { remoteStatus = "서버에 연결하지 못했습니다. 인터넷 연결을 확인하세요." }
+            do { try ComputerVault.saveServer(server) } catch { remoteStatus = error.localizedDescription; return }
+            serverDraft = server; nasAddress = server; nasKey = token; configureNAS(); needsJoin = false
+        } catch { remoteStatus = "서버에 연결하지 못했습니다. 서버 주소와 인터넷 연결을 확인하세요." }
     }
     func configureNAS() {
         relay?.stop(); relay = nil

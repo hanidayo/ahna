@@ -1044,6 +1044,9 @@ private struct MacPendingItem: Identifiable {
 
     private var nasEditor: some View {
         VStack(alignment: .leading, spacing: 8) {
+            TextField("서버 주소 (예: https://ahna.example.com)", text: $receiver.remoteURL)
+                .macField()
+                .accessibilityLabel("서버 주소")
             TextField("새 초대 코드 · 다시 연결할 때만", text: $receiver.remoteKey)
                 .macField()
                 .onSubmit { receiver.saveOptions() }
@@ -1200,7 +1203,12 @@ struct MacMeaningBanner: View {
                 .frame(width: 76, height: 76)
                 .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color(red: 0.0, green: 0.373, blue: 0.722)))
             Text("아나").font(.system(size: 28, weight: .heavy))
-            Text("받은 초대 코드를 입력하면 바로 시작합니다").font(.system(size: 13)).foregroundColor(MacTheme.muted)
+            Text("서버를 만든 사람에게 받은 서버 주소와 초대 코드를 입력하세요").font(.system(size: 13)).foregroundColor(MacTheme.muted)
+                .multilineTextAlignment(.center)
+            TextField("서버 주소 (예: https://ahna.example.com)", text: $receiver.remoteURL)
+                .macField()
+                .multilineTextAlignment(.center)
+                .frame(width: 300)
             TextField("초대 코드", text: $receiver.remoteKey)
                 .macField()
                 .multilineTextAlignment(.center)
@@ -1208,7 +1216,7 @@ struct MacMeaningBanner: View {
                 .onSubmit { receiver.saveOptions() }
             Button(receiver.joining ? "연결 중…" : "시작하기") { receiver.saveOptions() }
                 .buttonStyle(MacButtonStyle(kind: .primary, height: 36, fontSize: 14))
-                .disabled(receiver.joining || receiver.remoteKey.trimmingCharacters(in: .whitespaces).isEmpty)
+                .disabled(receiver.joining || receiver.remoteKey.trimmingCharacters(in: .whitespaces).isEmpty || Brand.normalizeServer(receiver.remoteURL) == nil)
                 .keyboardShortcut(.defaultAction)
             if !receiver.message.isEmpty {
                 Text(receiver.message).font(.system(size: 12)).foregroundColor(MacTheme.danger)

@@ -69,6 +69,7 @@ public class ShareActivity extends Activity {
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
         prefs = getSharedPreferences("아나", MODE_PRIVATE);
+        Brand.load(prefs);
         ui = new Ui(this);
         tablet = getResources().getConfiguration().screenWidthDp >= 600;
         read(getIntent());

@@ -58,7 +58,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class MainActivity extends Activity {
-    static final String DEFAULT_NAS = Brand.SERVER;
+    static final String DEFAULT_NAS = "";
 
     final ExecutorService jobs = Executors.newFixedThreadPool(4);
     final Handler handler = new Handler(Looper.getMainLooper());
@@ -139,6 +139,7 @@ public class MainActivity extends Activity {
         super.onCreate(state); // 테마(AhnaTheme)는 res/values(-night)에서 시스템 다크 모드를 따릅니다.
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         prefs = getSharedPreferences("아나", MODE_PRIVATE);
+        Brand.load(prefs);
         prefs.registerOnSharedPreferenceChangeListener(prefsListener);
         try { String v = getPackageManager().getPackageInfo(getPackageName(), 0).versionName; version = v == null ? "" : v; } catch (Exception ignored) {}
         nearby = new NearbyUi(this);
@@ -179,11 +180,11 @@ public class MainActivity extends Activity {
     /** 근처 기기 · QR 공유는 상대가 이 기기 서버 주소로 받아 가므로 서버 수신이 연결돼 있어야 합니다. */
     boolean guestReady() { String t = relayText; return server != null && relay != null && !prefs.getString("nasKey", "").isEmpty() && t != null && t.startsWith("서버 연결됨"); }
     /** 게스트 URL: https://<서버>/s/<이 기기 ID>/<토큰> */
-    String guestURL(String token) { return Brand.SERVER + "/s/" + server.identity + "/" + token; }
+    String guestURL(String token) { return Brand.server + "/s/" + server.identity + "/" + token; }
     /** This app's receiver identity; sent when pairing and polling so other hosts list this device once. */
     String identity() { return prefs.getString("identity", null); }
     /** 아나: 서버는 고정입니다. */
-    String nasAddress() { return Brand.SERVER; }
+    String nasAddress() { return Brand.server; }
     int dp(float v) { return ui.dp(v); }
 
     void status(String text) { runOnUiThread(() -> showSnack(text == null ? "전송하지 못했습니다." : text)); }
@@ -859,8 +860,8 @@ public class MainActivity extends Activity {
     }
 
     /** 아나 서버 가입: 초대 코드 → 이 기기 전용 토큰 (POST /_ahna/join) */
-    String join(String invite) throws Exception {
-        java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(Brand.SERVER + "/_ahna/join").openConnection();
+    String join(String serverUrl, String invite) throws Exception {
+        java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(serverUrl + "/_ahna/join").openConnection();
         c.setConnectTimeout(15000); c.setReadTimeout(20000); c.setRequestMethod("POST"); c.setDoOutput(true);
         c.setRequestProperty("Content-Type", "application/json");
         byte[] body = new org.json.JSONObject().put("invite", invite.trim()).put("computer", identity()).put("name", deviceName()).put("platform", "Android").toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
@@ -879,26 +880,34 @@ public class MainActivity extends Activity {
         return token;
     }
 
-    /** 아나: 서버 주소는 고정, 초대 코드로 가입합니다. 처음 실행하면 자동으로 열립니다. */
+    /** 아나: 서버 주소와 초대 코드로 가입합니다. 처음 실행하면 자동으로 열립니다. */
     void editNas() {
-        boolean joined = !prefs.getString("nasKey", "").isEmpty();
+        boolean joined = !prefs.getString("nasKey", "").isEmpty() && !Brand.server.isEmpty();
+        EditText address = ui.field("서버 주소 (예: ahna.example.com)");
+        address.setSingleLine(true);
+        address.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
+        address.setText(Brand.server);
         EditText invite = ui.field(joined ? "새 초대 코드 · 다시 연결할 때만" : "초대 코드");
         invite.setSingleLine(true);
         invite.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS);
-        String now = relayText == null ? (joined ? "서버에 연결하는 중입니다." : "받은 초대 코드를 입력하세요.") : relayText;
+        String now = relayText == null ? (joined ? "서버에 연결하는 중입니다." : "서버를 만든 사람에게 받은 서버 주소와 초대 코드를 입력하세요.") : relayText;
         TextView state = ui.text(now, 12, nasState() == 2 ? ui.on : ui.faint, Ui.REGULAR);
         TextView note = ui.text("연결하면 앱이 열려 있는 동안 자동으로 서버에 연결됩니다.", 12, ui.faint, Ui.REGULAR);
-        AlertDialog d = ui.dialog().setTitle(joined ? "서버" : "아나 시작하기").setView(ui.dialogBody(invite, state, note))
+        AlertDialog d = ui.dialog().setTitle(joined ? "서버" : "아나 시작하기").setView(ui.dialogBody(address, invite, state, note))
                 .setPositiveButton("연결", null).setNegativeButton(joined ? "닫기" : "나중에", null).create();
         ui.show(d, false);
         d.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            String url = Brand.normalize(address.getText().toString());
+            if (url == null) { address.setError("https://로 시작하는 서버 주소를 입력하세요"); address.requestFocus(); return; }
             String code = invite.getText().toString().trim();
             if (code.isEmpty()) { invite.requestFocus(); return; }
             d.dismiss();
             work(() -> {
-                String k = join(code);
-                RelayBridge.validate(Brand.SERVER, k, false);
-                prefs.edit().putString("nasKey", encrypt(k)).putBoolean("nasEnabled", true).commit();
+                String k = join(url, code);
+                RelayBridge.validate(url, k, false);
+                if (relay != null) { relay.close(); relay = null; }
+                prefs.edit().putString("server", url).putString("nasKey", encrypt(k)).putBoolean("nasEnabled", true).commit();
+                Brand.server = url;
                 startRelay();
                 runOnUiThread(() -> { updateSettingsValues(); showAddresses(); });
                 status("서버에 연결했습니다.");
@@ -1614,7 +1623,7 @@ public class MainActivity extends Activity {
     }
     java.net.HttpURLConnection noticeConnection(String path, String method) throws Exception {
         String key = keyFromSaved(); if (!Brand.isMemberToken(key)) return null;
-        java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(Brand.SERVER + path).openConnection();
+        java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(Brand.server + path).openConnection();
         c.setConnectTimeout(15000); c.setReadTimeout(20000); c.setRequestMethod(method); c.setRequestProperty("Authorization", "Bearer " + key); return c;
     }
     void refreshNotices() {

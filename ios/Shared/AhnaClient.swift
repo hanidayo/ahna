@@ -120,6 +120,8 @@ final class NoAPIRedirects: NSObject, URLSessionTaskDelegate, @unchecked Sendabl
 }
 
 private struct SharedConfiguration: Codable {
+    /// 서버 주소(https://호스트[:포트]). 처음 실행할 때 초대 코드와 함께 넣습니다.
+    var server: String?
     var profiles: [ComputerProfile]
     var deviceName: String?
     /// 사진을 JPG로 보내기 (없으면 켜짐). 본체 앱이 저장하고 공유 메뉴도 읽습니다.
@@ -179,6 +181,21 @@ enum ComputerVault {
     }
     static func deviceName() throws -> String? { try configuration()?.deviceName }
     static func memberToken() -> String? { ((try? configuration()) ?? nil)?.memberToken }
+    /// 설정 읽기가 잦아서(Brand.server) 한 번 읽은 값을 기억해 둡니다.
+    private static var cachedServer: String??
+    static func server() -> String? {
+        if let cachedServer { return cachedServer }
+        let value = ((try? configuration()) ?? nil)?.server
+        cachedServer = .some(value)
+        return value
+    }
+    static func saveServer(_ server: String) throws {
+        var config = try configuration() ?? SharedConfiguration(profiles: [], deviceName: nil)
+        cachedServer = .some(server)
+        if config.server == server { return }
+        config.server = server
+        try write(config)
+    }
     static func saveMemberToken(_ token: String) throws {
         var config = try configuration() ?? SharedConfiguration(profiles: [], deviceName: nil)
         if config.memberToken == token { return }
@@ -226,7 +243,7 @@ enum ComputerVault {
 @MainActor final class AhnaClient: ObservableObject {
     @Published var deviceName = DeviceIdentity.savedName
     @Published private(set) var deviceNameStatus = ""
-    @Published var address = (Brand.ahna ? Brand.server : UserDefaults.standard.string(forKey: "server") ?? "https://example.synology.me")
+    @Published var address = Brand.server
     @Published var pin = ""
     @Published private(set) var connections: [AhnaConnection] = []
     @Published var selectedID: UUID?
@@ -308,7 +325,7 @@ enum ComputerVault {
         let connection = AhnaConnection(receive: receive, configuration: configuration)
         connection.hostIdentity = hostIdentity
         status = "기기 등록 중…"
-        connection.address = address.trimmingCharacters(in: .whitespacesAndNewlines); connection.pin = pin.trimmingCharacters(in: .whitespacesAndNewlines)
+        connection.address = (Brand.ahna ? Brand.server : address).trimmingCharacters(in: .whitespacesAndNewlines); connection.pin = pin.trimmingCharacters(in: .whitespacesAndNewlines)
         // 한 번의 코드 입력으로 양쪽 모두 연결: 이 기기 쪽 연결을 함께 보냅니다. 상대가 저장했다고 답하면 유지합니다.
         var offer: ReverseCredential? = nil
         if receive, let make = reverseOffer { offer = await make() }
@@ -435,7 +452,7 @@ enum ComputerVault {
     /// 연결 코드로 추가할 때 함께 보낼 이 기기 쪽 연결(없으면 보내지 않음)과, 상대가 받아 저장했는지.
     var reverse: ReverseCredential?
     private(set) var reverseAccepted = false
-    @Published var address: String = (Brand.ahna ? Brand.server : UserDefaults.standard.string(forKey: "server") ?? "https://example.synology.me")
+    @Published var address: String = Brand.server
     @Published var pin = ""
     @Published var state: ServerState?
     @Published var status = "상대 기기와 연결해 주세요."

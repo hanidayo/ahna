@@ -101,7 +101,7 @@ struct MacReceiverDevice: Identifiable, Equatable {
         }
     }
     func saveOptions() {
-        do { joining = !remoteKey.trimmingCharacters(in: .whitespaces).isEmpty; message = ""; try write(["command": "configure", "savePath": savePath, "remoteEnabled": true, "remoteUrl": Brand.server, "remoteKey": remoteKey.trimmingCharacters(in: .whitespaces)]); remoteKey = "" }
+        do { joining = !remoteKey.trimmingCharacters(in: .whitespaces).isEmpty; message = ""; try write(["command": "configure", "savePath": savePath, "remoteEnabled": true, "remoteUrl": Brand.normalizeServer(remoteURL) ?? remoteURL, "remoteKey": remoteKey.trimmingCharacters(in: .whitespaces)]); remoteKey = "" }
         catch { message = "수신 서비스가 실행 중인지 확인하세요." }
     }
     func sendClipboard(_ text: String, target: String) async throws {
@@ -269,7 +269,11 @@ struct MacReceiverDevice: Identifiable, Equatable {
             }
             if !loadedOptions {
                 remoteEnabled = true
-                if let url = object["remoteUrl"] as? String, !url.isEmpty { remoteURL = url }
+                if let url = object["remoteUrl"] as? String, !url.isEmpty {
+                    remoteURL = url
+                    // 공유 메뉴(근처 기기로 보내기)와 기기 추가도 같은 서버를 쓰도록 함께 저장합니다.
+                    if url != Brand.server { try? ComputerVault.saveServer(url) }
+                }
                 loadedOptions = true
             }
         case "saved": message = joining ? "서버에 연결했습니다." : "옵션을 저장했습니다."; joining = false

@@ -1301,7 +1301,7 @@ struct AhnaMeaningBanner: View {
     }
 }
 
-/// 아나 첫 실행: 초대 코드 입력 → 서버 가입.
+/// 아나 첫 실행: 서버 주소 + 초대 코드 입력 → 서버 가입.
 struct JoinScreen: View {
     @ObservedObject var host: MobileHostModel
     @State private var code = ""
@@ -1312,8 +1312,14 @@ struct JoinScreen: View {
             AhnaLogoTile(size: 84)
             VStack(spacing: 8) {
                 Text(Brand.name).font(.system(size: 34, weight: .heavy)).kerning(-0.8)
-                Text("받은 초대 코드를 입력하면 바로 시작합니다").font(.system(size: 15)).foregroundStyle(AhnaPalette.muted)
+                Text("서버를 만든 사람에게 받은 서버 주소와 초대 코드를 입력하세요").font(.system(size: 15)).foregroundStyle(AhnaPalette.muted)
+                    .multilineTextAlignment(.center)
             }
+            TextField("서버 주소 (예: ahna.example.com)", text: $host.serverDraft)
+                .font(.system(size: 17)).multilineTextAlignment(.center)
+                .keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
+                .padding(.vertical, 14).background(AhnaPalette.surface, in: RoundedRectangle(cornerRadius: 14))
+                .overlay(RoundedRectangle(cornerRadius: 14).stroke(AhnaPalette.border))
             TextField("초대 코드", text: $code)
                 .font(.system(size: 20, weight: .semibold)).multilineTextAlignment(.center)
                 .textInputAutocapitalization(.characters).autocorrectionDisabled().focused($focused)
@@ -1325,7 +1331,7 @@ struct JoinScreen: View {
                     .frame(maxWidth: .infinity).padding(.vertical, 15)
             }
             .foregroundStyle(AhnaPalette.onAccent).background(AhnaPalette.accent, in: RoundedRectangle(cornerRadius: 14))
-            .disabled(host.joining || code.trimmingCharacters(in: .whitespaces).isEmpty)
+            .disabled(host.joining || code.trimmingCharacters(in: .whitespaces).isEmpty || Brand.normalizeServer(host.serverDraft) == nil)
             if !host.remoteStatus.isEmpty && host.remoteStatus != "서버 설정이 필요합니다." {
                 Text(host.remoteStatus).font(.footnote).foregroundStyle(AhnaPalette.danger).multilineTextAlignment(.center)
             }
@@ -1354,6 +1360,8 @@ struct NASEditorSheet: View {
                         Text(host.remoteStatus).font(.footnote)
                     }
                     if Brand.ahna {
+                        TextField("서버 주소", text: $host.serverDraft)
+                            .keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
                         TextField("새 초대 코드 · 다시 연결할 때만", text: $invite)
                             .textInputAutocapitalization(.characters).autocorrectionDisabled()
                         Button(host.joining ? "연결 중…" : "다시 연결") { Task { await host.join(invite: invite); invite = "" } }

@@ -586,7 +586,8 @@ function fillOptions(o) {
   if (o.ahna) {
     // 아나: 서버는 고정, 처음 한 번 초대 코드로 가입합니다.
     $('optNasTitle').textContent = '서버';
-    $('optNasUrl').hidden = $('optNasUrlLabel').hidden = true;
+    $('optNasUrlLabel').textContent = '서버 주소 (서버를 만든 사람에게 받은 주소)';
+    $('optNasUrl').placeholder = 'https://ahna.example.com';
     $('optNasKeyLabel').textContent = o.remoteKeySaved ? '연결됨' : '초대 코드';
     $('optNasKey').type = 'text';
     $('optNasKey').placeholder = o.remoteKeySaved ? '다시 연결할 때만 새 초대 코드 입력' : '받은 초대 코드 입력';

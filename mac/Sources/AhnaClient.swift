@@ -120,6 +120,8 @@ final class NoAPIRedirects: NSObject, URLSessionTaskDelegate, @unchecked Sendabl
 }
 
 private struct SharedConfiguration: Codable, Equatable {
+    /// 서버 주소(https://호스트[:포트]). 처음 실행할 때 초대 코드와 함께 넣습니다.
+    var server: String?
     var profiles: [ComputerProfile]
     var deviceName: String?
     /// 아나 서버 연결 토큰. 공유 메뉴가 근처 기기로 보낼 때 파일을 서버에 맡기는 데 씁니다.
@@ -171,6 +173,10 @@ enum ComputerVault {
         try cache.update(default: SharedConfiguration(profiles: [], deviceName: nil)) { $0.profiles = profiles }
     }
     static func memberToken() -> String? { ((try? configuration()) ?? nil)?.memberToken }
+    static func server() -> String? { ((try? configuration()) ?? nil)?.server }
+    static func saveServer(_ server: String) throws {
+        try cache.update(default: SharedConfiguration(profiles: [], deviceName: nil)) { $0.server = server }
+    }
     static func saveMemberToken(_ token: String) throws {
         try cache.update(default: SharedConfiguration(profiles: [], deviceName: nil)) { $0.memberToken = token }
     }
@@ -281,7 +287,7 @@ enum ComputerVault {
         let connection = AhnaConnection(receive: receive, configuration: configuration)
         connection.hostIdentity = hostIdentity
         status = "기기 등록 중…"
-        connection.address = address.trimmingCharacters(in: .whitespacesAndNewlines); connection.pin = pin.trimmingCharacters(in: .whitespacesAndNewlines)
+        connection.address = (Brand.ahna ? Brand.server : address).trimmingCharacters(in: .whitespacesAndNewlines); connection.pin = pin.trimmingCharacters(in: .whitespacesAndNewlines)
         // 한 번의 코드 입력으로 양쪽 모두 연결: 이 기기 쪽 연결을 함께 보냅니다. 상대가 저장했다고 답하면 유지합니다.
         var offer: ReverseCredential? = nil
         if receive, let make = reverseOffer { offer = await make() }

@@ -1,4 +1,4 @@
-﻿using System.Security.Cryptography;
+using System.Security.Cryptography;
 using System.Text.Json;
 using Ahna;
 using Ahna.Remote;
@@ -99,11 +99,13 @@ try
                     server.AnswerGuest(command.GetProperty("token").GetString()??"",command.TryGetProperty("accept",out var acceptValue)&&acceptValue.ValueKind==JsonValueKind.True);break;
                 case "configure":
                     var settings=command.Deserialize<Configuration>(Util.Json)??throw new ArgumentException("Invalid settings");
-                    // 아나: 서버는 고정, 연결 키 칸에는 초대 코드가 옵니다 → 이 Mac 전용 토큰으로 바꿔 저장
+                    // 서버 주소는 사용자가 넣고(비우면 지금 주소), 연결 키 칸에는 초대 코드가 옵니다 → 이 Mac 전용 토큰으로 바꿔 저장
+                    var remoteUrl=string.IsNullOrWhiteSpace(settings.RemoteUrl)?(server.Settings.RemoteUrl??""):Brand.NormalizeServer(settings.RemoteUrl)??throw new ArgumentException("서버 주소가 올바르지 않습니다. 예: https://ahna.example.com");
                     var input=(settings.RemoteKey??"").Trim();
-                    if(Brand.Ahna&&input.Length>0&&!Brand.IsMemberToken(input))input=await server.JoinServer(Brand.Server,input,CancellationToken.None);
+                    if(input.Length>0&&remoteUrl.Length==0)throw new ArgumentException("서버 주소를 먼저 입력하세요.");
+                    if(Brand.Ahna&&input.Length>0&&!Brand.IsMemberToken(input))input=await server.JoinServer(remoteUrl,input,CancellationToken.None);
                     var key=input.Length==0?server.Settings.RemoteKeyProtected:RemoteKey.Protect(input);
-                    server.SaveSettings(new(){SavePath=settings.SavePath,Notifications=true,RecipientSavedNotifications=server.Settings.RecipientSavedNotifications,RemoteEnabled=settings.RemoteEnabled,RemoteUrl=Brand.Ahna?Brand.Server:settings.RemoteUrl.Trim().TrimEnd('/'),RemoteKeyProtected=key});
+                    server.SaveSettings(new(){SavePath=settings.SavePath,Notifications=true,RecipientSavedNotifications=server.Settings.RecipientSavedNotifications,RemoteEnabled=settings.RemoteEnabled,RemoteUrl=remoteUrl,RemoteKeyProtected=key});
                     await Emit(new{type="saved"});await Status();break;
                 default:throw new ArgumentException("Unknown command");
             }

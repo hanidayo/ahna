@@ -1,13 +1,13 @@
 // 아나 — GitHub Releases 자동 업데이트 (Windows)
 //
 // 1. 시작 30초 뒤, 그리고 6시간마다 릴리스의 latest.json을 확인합니다.
-//    {서버}/_ahna/update/latest.json
+//    https://github.com/{저장소}/releases/latest/download/latest.json
 //    (API가 아니라 릴리스 파일 주소라 호출 횟수 제한이 없습니다.)
 // 2. 새 버전이 있으면 Notify로 알립니다. 사용자가 알림을 누르거나 트레이의 [업데이트 확인]에서
 //    설치하면 ZIP을 받아 SHA-256을 확인하고 %TEMP%에 풉니다.
 // 3. apply-update.ps1(내장 리소스)을 실행하고 앱을 종료합니다. 스크립트가 종료를 기다린 뒤
 //    %LOCALAPPDATA%\Programs\AhnaOpen를 교체하고 아나를 다시 실행합니다.
-//    설정·연결·기록은 %LOCALAPPDATA%\Ahna에 있어 그대로 유지됩니다.
+//    설정·연결·기록은 %LOCALAPPDATA%\AhnaOpen에 있어 그대로 유지됩니다.
 
 using System.Diagnostics;
 using System.IO.Compression;
@@ -31,9 +31,9 @@ public sealed record UpdateManifest(
 
 public sealed class UpdateService : IDisposable
 {
-    // 아나 서버가 업데이트 파일을 보관합니다(GitHub Actions가 빌드 후 자동으로 올림).
-    public static readonly string ReleasesPage = Ahna.Remote.Brand.Server + "/_ahna/download";
-    static readonly Uri ManifestUri = new(Ahna.Remote.Brand.Server + "/_ahna/update/latest.json");
+    // 새 버전은 이 앱을 빌드한 GitHub 저장소의 Releases에서 확인합니다(Brand.UpdateRepo).
+    public static readonly string ReleasesPage = Ahna.Remote.Brand.ReleasesPage;
+    static readonly Uri ManifestUri = new(Ahna.Remote.Brand.ManifestUrl);
     static readonly TimeSpan Interval = TimeSpan.FromHours(6);
 
     readonly HttpClient http = new(new SocketsHttpHandler { AllowAutoRedirect = true, MaxAutomaticRedirections = 5 })
@@ -56,10 +56,11 @@ public sealed class UpdateService : IDisposable
 
     public UpdateService() => http.DefaultRequestHeaders.UserAgent.ParseAdd($"Ahna-Windows/{CurrentText}");
 
-    public void Start() => timer = new System.Threading.Timer(async _ => await CheckAsync(false), null, TimeSpan.FromSeconds(30), Interval);
+    public void Start() { if (!Ahna.Remote.Brand.Updates) return; timer = new System.Threading.Timer(async _ => await CheckAsync(false), null, TimeSpan.FromSeconds(30), Interval); }
 
     public async Task<UpdateManifest?> CheckAsync(bool userInitiated)
     {
+        if (!Ahna.Remote.Brand.Updates) { LastError = "업데이트 확인이 꺼진 빌드입니다."; return null; }
         if (!await gate.WaitAsync(0)) return null;
         try
         {

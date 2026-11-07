@@ -16,10 +16,11 @@ import java.nio.charset.StandardCharsets;
 
 /** GitHub Releases(latest.json)에서 새 버전을 확인하고, 있으면 APK 내려받기를 안내합니다. 6시간에 한 번 확인합니다. */
 final class UpdateCheck {
-    static final String MANIFEST = Brand.SERVER + "/_ahna/update/latest.json";
+    static final String MANIFEST = "https://github.com/" + Brand.UPDATE_REPO + "/releases/latest/download/latest.json";
     private UpdateCheck() {}
 
     static void run(Activity activity, SharedPreferences prefs, boolean force) {
+        if (!Brand.updates()) { if (force) activity.runOnUiThread(() -> new AlertDialog.Builder(activity).setMessage("업데이트 확인이 꺼진 빌드입니다.").setPositiveButton("확인", null).show()); return; }
         long now = System.currentTimeMillis();
         if (!force && now - prefs.getLong("updateChecked", 0) < 6L * 3600 * 1000) return;
         new Thread(() -> {

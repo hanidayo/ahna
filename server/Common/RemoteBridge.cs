@@ -46,7 +46,7 @@ public sealed class RemoteBridge : IAsyncDisposable
     }
     public static Uri Validate(BridgeConfig config,bool testHttp=false)
     {
-        if(!Uri.TryCreate(config.Url.Trim(),UriKind.Absolute,out var uri) || (uri.Scheme!="https" && !(testHttp && uri.Scheme=="http" && uri.IsLoopback)) || uri.AbsolutePath!="/" || uri.Query.Length>0 || uri.Fragment.Length>0 || uri.UserInfo.Length>0)throw new ArgumentException("서버 주소는 경로 없는 HTTPS 주소로 입력하세요. 예: https://ahna.example.synology.me");
+        if(!Uri.TryCreate(config.Url.Trim(),UriKind.Absolute,out var uri) || (uri.Scheme!="https" && !(testHttp && uri.Scheme=="http" && uri.IsLoopback)) || uri.AbsolutePath!="/" || uri.Query.Length>0 || uri.Fragment.Length>0 || uri.UserInfo.Length>0)throw new ArgumentException("서버 주소는 경로 없는 HTTPS 주소로 입력하세요. 예: https://ahna.example.com");
         if(!Brand.IsMemberToken(config.Key) && (config.Key.Length<64 || !config.Key.All(Uri.IsHexDigit)))throw new ArgumentException("서버 연결 키는 64자리 이상의 임의의 16진수여야 합니다.");
         return uri;
     }

@@ -31,7 +31,7 @@ import UniformTypeIdentifiers
         task = Task { @MainActor [weak self] in
             guard let self else { return }
             do {
-                guard let token = ComputerVault.memberToken(), Brand.isMemberToken(token) else { throw AhnaError.message("아나 본체 앱을 한 번 열어 서버에 연결한 뒤 다시 시도하세요.") }
+                guard let token = ComputerVault.memberToken(), Brand.isMemberToken(token), !Brand.server.isEmpty else { throw AhnaError.message("아나 본체 앱을 한 번 열어 서버에 연결한 뒤 다시 시도하세요.") }
                 let session = URLSession(configuration: .ephemeral)
                 defer { session.finishTasksAndInvalidate() }
                 func request(_ path: String, _ method: String) -> URLRequest {

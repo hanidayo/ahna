@@ -212,7 +212,7 @@ internal sealed class OutboundDevices : TransferServer.IExternalDevices, IDispos
 	{
 		if (!Uri.TryCreate(value.Trim(), UriKind.Absolute, out Uri? result) || result.UserInfo.Length != 0 || result.Query.Length != 0 || result.Fragment.Length != 0 || result.AbsolutePath != "/")
 		{
-			throw new ArgumentException("상대 주소만 입력하세요. 예: https://이름.synology.me");
+			throw new ArgumentException("상대 주소만 입력하세요. 예: https://ahna.example.com");
 		}
 		if (result.Scheme != "https")
 		{

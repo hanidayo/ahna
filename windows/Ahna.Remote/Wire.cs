@@ -8,12 +8,25 @@ using System.Threading.Tasks;
 
 namespace Ahna.Remote;
 
-// Build flavor. scripts/ahna-brand.py rewrites these three lines for the friends-only app 아나 (Ahna).
+// 앱 정보. 서버 주소는 앱을 처음 실행할 때 사용자가 넣습니다(초대 코드와 함께).
 public static class Brand
 {
     public const bool Ahna = true;
     public const string Name = "아나";
-    public const string Server = "https://example.synology.me";
+    /// 업데이트를 확인할 GitHub 저장소(소유자/이름). 빌드할 때 scripts/set_repo.py가 넣습니다. 그대로면 업데이트 확인을 하지 않습니다.
+    public const string UpdateRepo = "OWNER/REPO";
+    public static bool Updates => !UpdateRepo.StartsWith("OWNER/", StringComparison.Ordinal);
+    public static string ReleasesPage => "https://github.com/" + UpdateRepo + "/releases/latest";
+    public static string ManifestUrl => "https://github.com/" + UpdateRepo + "/releases/latest/download/latest.json";
+    /// 사용자가 넣은 서버 주소를 https://호스트[:포트] 꼴로 맞춥니다. 올바르지 않으면 null.
+    public static string? NormalizeServer(string? input)
+    {
+        var text = (input ?? "").Trim().TrimEnd('/');
+        if (text.Length == 0) return null;
+        if (!text.Contains("://", StringComparison.Ordinal)) text = "https://" + text;
+        if (!Uri.TryCreate(text, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps || string.IsNullOrEmpty(uri.Host) || uri.AbsolutePath.Trim('/').Length > 0 || uri.Query.Length > 0 || uri.UserInfo.Length > 0) return null;
+        return uri.GetLeftPart(UriPartial.Authority);
+    }
     // A member token from an Ahna server: ahna.{32 hex computer id}.{64 hex}
     public static bool IsMemberToken(string key)
     {

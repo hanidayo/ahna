@@ -104,8 +104,6 @@ public sealed class TransferServer : IAsyncDisposable
             if(File.Exists(saved))foreach(var s in JsonSerializer.Deserialize<NativeSession[]>(RemoteKey.Unprotect(File.ReadAllText(saved)),Util.Json)??[])
                 if(s.LastSeen>DateTimeOffset.UtcNow.AddDays(-30))sessions[s.Token]=new(s.Id,s.Name,false){Native=true,CanReceive=s.CanReceive,LastSeen=s.LastSeen,ComputerId=PeerIdentity(s.ComputerId)};
         }catch{}
-        // 아나: the server is fixed by the build; only the member token (from the invite code) is stored.
-        if(Ahna.Remote.Brand.Ahna) Settings.RemoteUrl = Ahna.Remote.Brand.Server;
         Settings.RemoteEnabled = !string.IsNullOrEmpty(Settings.RemoteKeyProtected);
         if(history.Count>20) history.RemoveRange(20,history.Count-20);
         // Only our own transient folder is cleaned, never the receive directory.
@@ -392,7 +390,9 @@ public sealed class TransferServer : IAsyncDisposable
             try
             {
                 var key = (input.NasKey ?? "").Trim();
-                var remoteUrl = Ahna.Remote.Brand.Ahna ? Ahna.Remote.Brand.Server : (input.RemoteUrl ?? "").Trim().TrimEnd('/');
+                // 서버 주소: 사용자가 넣은 주소(비워 두면 지금 주소 그대로)
+                var remoteUrl = string.IsNullOrWhiteSpace(input.RemoteUrl) ? (Settings.RemoteUrl ?? "") : Ahna.Remote.Brand.NormalizeServer(input.RemoteUrl) ?? throw new ArgumentException("서버 주소가 올바르지 않습니다. 예: https://ahna.example.com");
+                if (key.Length > 0 && remoteUrl.Length == 0) throw new ArgumentException("서버 주소를 먼저 입력하세요.");
                 // 아나: the key box takes the invite code; the server answers with this computer's member token.
                 if (Ahna.Remote.Brand.Ahna && key.Length > 0 && !Ahna.Remote.Brand.IsMemberToken(key)) key = await JoinServer(remoteUrl, key, c.RequestAborted);
                 SaveSettings(new Preferences

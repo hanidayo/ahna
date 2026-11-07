@@ -8,7 +8,7 @@
 //   .task { await updater.check() }                 // 앱 시작 시
 //   UpdateBanner(updater: updater)                   // 목록 상단 등에 배치
 //
-// 저장소: scripts/set_owner.py가 hanidayo를 실제 GitHub 계정으로 바꿉니다.
+// 저장소: 빌드할 때 scripts/set_repo.py가 Brand.updateRepo에 넣습니다(넣지 않은 빌드는 확인하지 않음).
 
 import Foundation
 import SwiftUI
@@ -30,9 +30,8 @@ struct AhnaUpdateManifest: Decodable {
 @MainActor
 final class AppUpdater: ObservableObject {
     static let shared = AppUpdater()
-    // 아나 서버가 업데이트 파일을 보관합니다(GitHub Actions가 빌드 후 자동으로 올림).
-    static let manifestURL = URL(string: Brand.server + "/_ahna/update/latest.json")!
-    static let releasesURL = URL(string: Brand.server + "/_ahna/download")!
+    // 새 버전은 이 앱을 빌드한 GitHub 저장소의 Releases에서 확인합니다.
+    static let releasesURL = Brand.releasesURL ?? URL(string: "https://github.com")!
 
     enum Phase: Equatable { case idle, checking, upToDate, available(String), downloading, failed(String) }
     @Published private(set) var phase: Phase = .idle
@@ -56,9 +55,10 @@ final class AppUpdater: ObservableObject {
         let defaults = UserDefaults.standard
         if !force, manifest != nil, let last = defaults.object(forKey: lastCheckKey) as? Date,
            Date().timeIntervalSince(last) < 6 * 3600 { return }
+        guard let manifestURL = Brand.manifestURL else { return }
         phase = .checking
         do {
-            var request = URLRequest(url: Self.manifestURL, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 20)
+            var request = URLRequest(url: manifestURL, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 20)
             request.setValue("Ahna-\(platformKey)/\(Self.currentVersion)", forHTTPHeaderField: "User-Agent")
             let (data, response) = try await URLSession.shared.data(for: request)
             guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
