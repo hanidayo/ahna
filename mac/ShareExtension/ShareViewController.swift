@@ -20,11 +20,55 @@ final class ShareViewController: NSViewController {
     }
 }
 
+/// 공유한 항목이 웹 주소·글자뿐이면 그 글자를 꺼냅니다(여러 개면 줄을 바꿔 이어 붙임). 파일이 하나라도 섞이면 nil.
+/// 사파리 등에서 공유한 주소를 파일(txt)이 아니라 상대 기기의 클립보드 글자로 보내기 위해 씁니다.
+enum SharedText {
+    static func extract(_ providers: [NSItemProvider]) async -> String? {
+        guard !providers.isEmpty, providers.count <= 16 else { return nil }
+        var parts: [String] = []
+        for provider in providers {
+            if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) { return nil }
+            let types = provider.registeredTypeIdentifiers.compactMap { UTType($0) }
+            if types.contains(where: { $0.conforms(to: .image) || $0.conforms(to: .audiovisualContent) || $0.conforms(to: .pdf) }) { return nil }
+            let isURL = provider.hasItemConformingToTypeIdentifier(UTType.url.identifier)
+            guard isURL || provider.hasItemConformingToTypeIdentifier(UTType.plainText.identifier) else { return nil }
+            guard let value = await load(provider, type: isURL ? UTType.url.identifier : UTType.plainText.identifier) else { return nil }
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty && !parts.contains(trimmed) { parts.append(trimmed) }
+        }
+        let text = parts.joined(separator: "\n")
+        return text.isEmpty || text.contains("\0") || text.utf8.count > 65536 ? nil : text
+    }
+    private static func load(_ provider: NSItemProvider, type: String) async -> String? {
+        await withCheckedContinuation { continuation in
+            provider.loadItem(forTypeIdentifier: type, options: nil) { item, _ in
+                var text: String?
+                if let url = item as? URL { text = url.isFileURL ? nil : url.absoluteString }
+                else if let string = item as? String { text = string }
+                else if let data = item as? Data { text = String(data: data, encoding: .utf8) }
+                else if let attributed = item as? NSAttributedString { text = attributed.string }
+                continuation.resume(returning: text)
+            }
+        }
+    }
+    /// 근처 기기(Bluetooth)로 보낼 때는 글자를 '아나-글자.txt' 한 파일로 만들어 보냅니다.
+    static func file(_ text: String) throws -> PendingFile {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("ahna-share-text-" + UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let url = folder.appendingPathComponent("아나-글자.txt")
+        let data = Data(text.utf8)
+        try data.write(to: url)
+        return PendingFile(url: url, path: url.path, bytes: Int64(data.count))
+    }
+}
+
 struct DirectShareScreen: View {
     let context: NSExtensionContext?
     @StateObject private var client = AhnaClient(receive: false)
     @StateObject private var nearby = ShareNearby()
     @State private var files: [PendingFile] = []
+    /// 웹 주소·글자만 공유했을 때 그 글자(파일 대신 상대 클립보드로 보냄)
+    @State private var text: String?
     @State private var staging: URL?
     @State private var preparing = true
     @State private var preparationError = ""
@@ -44,7 +88,7 @@ struct DirectShareScreen: View {
                 Image(systemName: "paperplane.fill").font(.title).foregroundStyle(accent)
                 VStack(alignment: .leading, spacing: 6) {
                     Text(nearby.active ? AhnaText.toward(nearby.target) + " 보내기" : "아나로 보내기").font(.headline)
-                    Text(preparing ? "공유 파일 준비 중…" : "선택한 파일 \(files.count)개").foregroundStyle(.secondary)
+                    Text(preparing ? "공유 파일 준비 중…" : text.map { ($0.hasPrefix("http://") || $0.hasPrefix("https://") ? "링크" : "글자") + " · 상대 기기 클립보드로 보냅니다" } ?? "선택한 파일 \(files.count)개").foregroundStyle(.secondary)
                 }
                 Spacer()
             }.padding(18).background(.background, in: RoundedRectangle(cornerRadius: 16))
@@ -55,9 +99,17 @@ struct DirectShareScreen: View {
                     ForEach(client.connections) { connection in
                         Button {
                             client.selectedID = connection.id
-                            _ = client.send(files) {
-                                completed = true
-                                context?.completeRequest(returningItems: nil)
+                            if let text {
+                                // 주소·글자는 파일이 아니라 상대 기기의 받은 글자(클립보드)로 보냅니다.
+                                Task { @MainActor in
+                                    do { try await connection.sendClipboard(text); completed = true; context?.completeRequest(returningItems: nil) }
+                                    catch { preparationError = error.localizedDescription }
+                                }
+                            } else {
+                                _ = client.send(files) {
+                                    completed = true
+                                    context?.completeRequest(returningItems: nil)
+                                }
                             }
                         } label: {
                             HStack(spacing: 14) {
@@ -89,7 +141,9 @@ struct DirectShareScreen: View {
                     VStack(spacing: 1) {
                         ForEach(nearby.devices) { device in
                             Button {
-                                nearby.send(files, to: device, sender: client.deviceName) {
+                                let outgoing: [PendingFile]
+                                if let text { guard let file = try? SharedText.file(text) else { return }; outgoing = [file] } else { outgoing = files }
+                                nearby.send(outgoing, to: device, sender: client.deviceName) {
                                     completed = true
                                     Task { @MainActor in try? await Task.sleep(nanoseconds: 1_200_000_000); context?.completeRequest(returningItems: nil) }
                                 }
@@ -166,6 +220,7 @@ struct DirectShareScreen: View {
         do {
             let providers = (context?.inputItems as? [NSExtensionItem] ?? []).flatMap { $0.attachments ?? [] }
             guard !providers.isEmpty, providers.count <= 256 else { throw AhnaError.message("1~256개 항목을 선택해 주세요.") }
+            if let shared = await SharedText.extract(providers) { text = shared; preparing = false; return }
             let root = FileManager.default.temporaryDirectory.appendingPathComponent("AhnaDirectShare/" + UUID().uuidString, isDirectory: true)
             try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true); staging = root
             var urls: [URL] = []

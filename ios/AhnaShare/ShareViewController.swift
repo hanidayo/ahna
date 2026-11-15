@@ -6,7 +6,9 @@ final class ShareViewController: UIViewController {
     private var staging: URL?
     override func viewDidLoad() {
         super.viewDidLoad()
-        let host = UIHostingController(rootView: ShareScreen(context: extensionContext, prepare: { [weak self] in try await self?.prepareFiles() ?? [] }))
+        let context = extensionContext
+        let host = UIHostingController(rootView: ShareScreen(context: context, prepare: { [weak self] in try await self?.prepareFiles() ?? [] },
+                                                             prepareText: { await SharedText.extract((context?.inputItems as? [NSExtensionItem] ?? []).flatMap { $0.attachments ?? [] }) }))
         addChild(host); host.view.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(host.view)
         NSLayoutConstraint.activate([host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor), host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor), host.view.topAnchor.constraint(equalTo: view.topAnchor), host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor)])
         host.didMove(toParent: self)
@@ -53,6 +55,48 @@ final class ShareViewController: UIViewController {
         return try FilePreparation.collect(urls)
     }
     deinit { if let staging { try? FileManager.default.removeItem(at: staging) } }
+}
+
+/// 공유한 항목이 웹 주소·글자뿐이면 그 글자를 꺼냅니다(여러 개면 줄을 바꿔 이어 붙임). 파일이 하나라도 섞이면 nil.
+/// 사파리 등에서 공유한 주소를 파일(txt)이 아니라 상대 기기의 클립보드 글자로 보내기 위해 씁니다.
+enum SharedText {
+    static func extract(_ providers: [NSItemProvider]) async -> String? {
+        guard !providers.isEmpty, providers.count <= 16 else { return nil }
+        var parts: [String] = []
+        for provider in providers {
+            if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) { return nil }
+            let types = provider.registeredTypeIdentifiers.compactMap { UTType($0) }
+            if types.contains(where: { $0.conforms(to: .image) || $0.conforms(to: .audiovisualContent) || $0.conforms(to: .pdf) }) { return nil }
+            let isURL = provider.hasItemConformingToTypeIdentifier(UTType.url.identifier)
+            guard isURL || provider.hasItemConformingToTypeIdentifier(UTType.plainText.identifier) else { return nil }
+            guard let value = await load(provider, type: isURL ? UTType.url.identifier : UTType.plainText.identifier) else { return nil }
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty && !parts.contains(trimmed) { parts.append(trimmed) }
+        }
+        let text = parts.joined(separator: "\n")
+        return text.isEmpty || text.contains("\0") || text.utf8.count > 65536 ? nil : text
+    }
+    private static func load(_ provider: NSItemProvider, type: String) async -> String? {
+        await withCheckedContinuation { continuation in
+            provider.loadItem(forTypeIdentifier: type, options: nil) { item, _ in
+                var text: String?
+                if let url = item as? URL { text = url.isFileURL ? nil : url.absoluteString }
+                else if let string = item as? String { text = string }
+                else if let data = item as? Data { text = String(data: data, encoding: .utf8) }
+                else if let attributed = item as? NSAttributedString { text = attributed.string }
+                continuation.resume(returning: text)
+            }
+        }
+    }
+    /// 근처 기기(Bluetooth)로 보낼 때는 글자를 '아나-글자.txt' 한 파일로 만들어 보냅니다.
+    static func file(_ text: String) throws -> PendingFile {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("ahna-share-text-" + UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let url = folder.appendingPathComponent("아나-글자.txt")
+        let data = Data(text.utf8)
+        try data.write(to: url)
+        return PendingFile(url: url, path: url.path, bytes: Int64(data.count))
+    }
 }
 
 // 아나 1.1 공유 창 — 좁은 창(700pt 미만): 아래에서 올라온 시트 모양, 기기 목록 /
@@ -177,9 +221,12 @@ final class ShareViewController: UIViewController {
 struct ShareScreen: View {
     let context: NSExtensionContext?
     let prepare: () async throws -> [PendingFile]
+    /// 웹 주소·글자만 공유했을 때 그 글자(파일 대신 상대 클립보드로 보냄)
+    let prepareText: () async -> String?
     @StateObject private var client = AhnaClient(receive: false)
     @StateObject private var nearby = ShareNearby()
     @State private var files: [PendingFile] = []
+    @State private var text: String?
     @State private var prepared = false
     @State private var completed = false
     @State private var sendingID: UUID?
@@ -191,7 +238,10 @@ struct ShareScreen: View {
         GeometryReader { proxy in
             screen(regular: AhnaLayout.isWide(proxy.size.width))
         }
-        .task { do { files = try await prepare(); prepared = true } catch { client.progress = error.localizedDescription } }
+        .task {
+            if let shared = await prepareText() { text = shared; prepared = true; return }
+            do { files = try await prepare(); prepared = true } catch { client.progress = error.localizedDescription }
+        }
         .task(id: client.pollID) { await client.poll() }
         .onAppear { nearby.start() }
         .onDisappear { client.cancel(); nearby.reset(); nearby.stop() }
@@ -241,6 +291,7 @@ struct ShareScreen: View {
 
     private var summary: String {
         guard prepared else { return "공유 파일 준비 중…" }
+        if let text { return (text.hasPrefix("http://") || text.hasPrefix("https://") ? "링크" : "글자") + " · 상대 기기 클립보드로 보냅니다" }
         let total = files.reduce(Int64(0)) { $0 + $1.bytes }
         let types: [UTType?] = files.map { UTType(filenameExtension: ($0.path as NSString).pathExtension) }
         let noun: String
@@ -353,6 +404,19 @@ struct ShareScreen: View {
     // 기존 전송 흐름 그대로: 기기를 고르면 바로 보내고, 끝나면 공유창을 닫습니다.
     private func send(to connection: AhnaConnection) {
         client.selectedID = connection.id
+        if let text {
+            // 주소·글자는 파일이 아니라 상대 기기의 받은 글자(클립보드)로 보냅니다.
+            sendingID = connection.id
+            Task { @MainActor in
+                do {
+                    try await connection.sendClipboard(text)
+                    completed = true
+                    try? await Task.sleep(nanoseconds: 1_200_000_000)
+                    context?.completeRequest(returningItems: nil)
+                } catch { client.progress = error.localizedDescription; sendingID = nil }
+            }
+            return
+        }
         let started = client.send(files) {
             completed = true
             Task { @MainActor in
@@ -376,7 +440,9 @@ struct ShareScreen: View {
 
     private func nearbyRow(_ device: NearbyDevice) -> some View {
         Button {
-            nearby.send(files, to: device, sender: client.deviceName) {
+            let outgoing: [PendingFile]
+            if let text { guard let file = try? SharedText.file(text) else { return }; outgoing = [file] } else { outgoing = files }
+            nearby.send(outgoing, to: device, sender: client.deviceName) {
                 completed = true
                 Task { @MainActor in
                     try? await Task.sleep(nanoseconds: 1_200_000_000)
