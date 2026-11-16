@@ -28,6 +28,10 @@ on:
         description: "true면 시험 빌드의 서버 이미지를 :test 태그로 올립니다"
         required: false
         default: "false"
+      mac_runner:
+        description: "Mac·iOS 빌드 서버 (Apple 칩이 붐비면 macos-15-intel)"
+        required: false
+        default: "macos-15"
 
 permissions:
   contents: read
@@ -150,7 +154,7 @@ jobs:
 
   ios:
     needs: version
-    runs-on: macos-15
+    runs-on: ${{ github.event.inputs.mac_runner || 'macos-15' }}
     outputs:
       asset: ${{ steps.up.outputs.asset }}
     steps:
@@ -193,7 +197,7 @@ jobs:
 
   mac:
     needs: version
-    runs-on: macos-15
+    runs-on: ${{ github.event.inputs.mac_runner || 'macos-15' }}
     outputs:
       asset: ${{ steps.up.outputs.asset }}
     steps:
