@@ -702,7 +702,10 @@ private final class MobileHTTPRequest {
     /// 아나 서버 가입: 초대 코드 → 이 기기 전용 토큰. 토큰은 키체인에 저장하고 바로 서버에 연결합니다.
     func join(invite: String) async {
         let code = invite.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !code.isEmpty, let engine, let url = URL(string: Brand.server + "/_ahna/join") else { return }
+        guard !code.isEmpty else { return }
+        // 이 기기의 받기 준비(키체인 등)가 실패했으면 가입할 수 없습니다. 아무 반응 없이 끝나지 않게 이유를 보여 줍니다.
+        guard let engine else { remoteStatus = "이 iPhone에서 아나를 준비하지 못했습니다: " + status + " · 앱을 지우고 다시 설치하거나, 설치 도구에서 같은 인증서로 다시 서명해 보세요."; return }
+        guard let url = URL(string: Brand.server + "/_ahna/join") else { remoteStatus = "서버 주소가 올바르지 않습니다."; return }
         joining = true; defer { joining = false }
         var request = URLRequest(url: url); request.httpMethod = "POST"; request.timeoutInterval = 20
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
